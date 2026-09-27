@@ -35,7 +35,14 @@ HP<div id="hpbar"><div id="hp"></div></div></div>
 const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
 const scoreEl=document.getElementById("score"),waveEl=document.getElementById("wave"),hpEl=document.getElementById("hp"),enemyCountEl=document.getElementById("enemyCount"),bestEl=document.getElementById("best"),titleEl=document.getElementById("title"),subtitleEl=document.getElementById("subtitle");
 let W=0,H=0;
-function resize(){W=innerWidth;H=innerHeight;canvas.width=W;canvas.height=H}
+let depthBuffer=new Float32Array(1);
+function resize(){
+ W=innerWidth;
+ H=innerHeight;
+ canvas.width=W;
+ canvas.height=H;
+ depthBuffer=new Float32Array(Math.max(1,W));
+}
 addEventListener("resize",resize);resize();
 
 const keys={};
@@ -112,7 +119,7 @@ const player={x:2.5,y:2.5,r:.2,height:1.65,speed:3,hp:100,cooldown:0};
 const camera={x:player.x,y:player.y,z:2.2,distance:3.4};
 let enemies=[],projectiles=[],particles=[],score=0,wave=1,spawnTimer=0,gameOver=false;
 let best=Number(localStorage.getItem("neon_3rd_person_best")||0);bestEl.textContent=best;
-const depthBuffer=new Float32Array(Math.max(1,innerWidth));
+
 
 function reset(){
  player.x=2.5;player.y=2.5;player.hp=100;player.cooldown=0;
@@ -299,64 +306,302 @@ function raycast(angle){
  return {distance:Math.max(.001,Math.abs(dist)),side};
 }
 function drawWorld(){
- const sky=ctx.createLinearGradient(0,0,0,H/2);sky.addColorStop(0,"#06111f");sky.addColorStop(1,"#182c42");ctx.fillStyle=sky;ctx.fillRect(0,0,W,H/2);
- const floor=ctx.createLinearGradient(0,H/2,0,H);floor.addColorStop(0,"#101924");floor.addColorStop(1,"#020407");ctx.fillStyle=floor;ctx.fillRect(0,H/2,W,H/2);
+ const sky=ctx.createLinearGradient(0,0,0,H/2);
+ sky.addColorStop(0,"#050b15");
+ sky.addColorStop(.55,"#102033");
+ sky.addColorStop(1,"#223950");
+ ctx.fillStyle=sky;
+ ctx.fillRect(0,0,W,H);
+
  const horizon=H/2+cameraPitch*H*.23;
- for(let x=0;x<W;x++){
-  const offset=(x/W-.5)*FOV,ray=raycast(cameraYaw+offset),corrected=ray.distance*Math.cos(offset);depthBuffer[x]=corrected;
-  const wallHeight=Math.min(H*2,H/(corrected*.92)),top=horizon-wallHeight/2;
-  let light=Math.max(.16,1-corrected/18);if(ray.side)light*=.70;
-  const r=Math.floor(35*light),g=Math.floor(65*light),b=Math.floor(95*light);
-  ctx.fillStyle="rgb("+r+","+g+","+b+")";ctx.fillRect(x,top,1.2,wallHeight);
+
+ /* Draw real projected floor tiles first. */
+ for(let my=0;my<MAP_H;my++){
+  for(let mx=0;mx<MAP_W;mx++){
+   if(MAP[my][mx]==="#" ) continue;
+
+   const a=project3DPoint(mx,my,0);
+   const b=project3DPoint(mx+1,my,0);
+   const d=project3DPoint(mx,my+1,0);
+   const e=project3DPoint(mx+1,my+1,0);
+
+   if(!a||!b||!d||!e) continue;
+
+   const near=Math.min(a.forward,b.forward,d.forward,e.forward);
+   if(near<.12) continue;
+
+   const tileShade=(((mx+my)&1)?0.92:1.0);
+   const falloff=Math.max(.22,1-near/22);
+   const rr=Math.floor(20*tileShade*falloff+6);
+   const gg=Math.floor(30*tileShade*falloff+12);
+   const bb=Math.floor(45*tileShade*falloff+18);
+
+   ctx.fillStyle="rgb("+rr+","+gg+","+bb+")";
+   ctx.beginPath();
+   ctx.moveTo(a.sx,a.sy);
+   ctx.lineTo(b.sx,b.sy);
+   ctx.lineTo(e.sx,e.sy);
+   ctx.lineTo(d.sx,d.sy);
+   ctx.closePath();
+   ctx.fill();
+
+   ctx.strokeStyle="rgba(105,190,225,"+(0.045*falloff)+")";
+   ctx.stroke();
+  }
  }
- ctx.strokeStyle="rgba(90,170,220,.10)";
- for(let i=1;i<10;i++){const y=horizon+(H-horizon)*(i/10);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+
+ /* Wall depth buffer and walls. */
+ for(let x=0;x<W;x++){
+  const offset=(x/W-.5)*FOV;
+  const ray=raycast(cameraYaw+offset);
+  const corrected=ray.distance*Math.cos(offset);
+  depthBuffer[x]=corrected;
+
+  const wallHeight=Math.min(H*2.2,H/(corrected*.90));
+  const top=horizon-wallHeight/2;
+
+  let light=Math.max(.14,1-corrected/20);
+  if(ray.side)light*=.68;
+
+  const r=Math.floor(40*light+5);
+  const g=Math.floor(68*light+10);
+  const b=Math.floor(98*light+15);
+
+  ctx.fillStyle="rgb("+r+","+g+","+b+")";
+  ctx.fillRect(x,top,1.4,wallHeight);
+
+  if(corrected<11){
+   ctx.fillStyle="rgba(80,190,235,"+(0.08*(1-corrected/11))+")";
+   ctx.fillRect(x,top+2,1.4,2);
+  }
+ }
+
+ /* Floor perspective accents / horizon band. */
+ ctx.strokeStyle="rgba(110,200,235,.12)";
+ for(let i=1;i<11;i++){
+  const t=i/11;
+  const y=horizon+(H-horizon)*(t*t);
+  ctx.beginPath();
+  ctx.moveTo(0,y);
+  ctx.lineTo(W,y);
+  ctx.stroke();
+ }
 }
 const FOV=Math.PI/3;
-function project(x,y,z,height){
- const dx=x-camera.x,dy=y-camera.y;
+function project3DPoint(x,y,z){
+ const dx=x-camera.x;
+ const dy=y-camera.y;
  const forward=Math.cos(cameraYaw)*dx+Math.sin(cameraYaw)*dy;
  const side=-Math.sin(cameraYaw)*dx+Math.cos(cameraYaw)*dy;
- if(forward<=.15)return null;
+ if(forward<=.06)return null;
  const focal=(W/2)/Math.tan(FOV/2);
  const sx=W/2+(side/forward)*focal;
  const horizon=H/2+cameraPitch*H*.23;
- const bottom=horizon-(z-camera.z)*focal/forward;
- const top=horizon-(z+height-camera.z)*focal/forward;
- const h=bottom-top;
- return {forward,sx,top,bottom,w:h*.55,h:h};
+ const sy=horizon-(z-camera.z)*focal/forward;
+ return {forward,sx,sy};
 }
+function project(x,y,z,height){
+ const base=project3DPoint(x,y,z);
+ const top=project3DPoint(x,y,z+height);
+ if(!base||!top)return null;
+ const h=base.sy-top.sy;
+ return {forward:base.forward,sx:base.sx,top:top.sy,bottom:base.sy,w:h*.55,h:h};
+}
+function rgb(c,shade){
+ return "rgb("+
+   Math.max(0,Math.min(255,Math.floor(c[0]*shade)))+","+
+   Math.max(0,Math.min(255,Math.floor(c[1]*shade)))+","+
+   Math.max(0,Math.min(255,Math.floor(c[2]*shade)))+")";
+}
+function transformModelPoint(cx,cy,cz,lx,ly,lz,rot){
+ const cr=Math.cos(rot),sr=Math.sin(rot);
+ return {
+   x:cx+lx*cr-ly*sr,
+   y:cy+lx*sr+ly*cr,
+   z:cz+lz
+ };
+}
+function drawCuboid(cx,cy,cz,w,d,h,rot,color,shade=1){
+ const x=w/2,y=d/2;
+ const local=[
+  [-x,-y,0],[x,-y,0],[x,y,0],[-x,y,0],
+  [-x,-y,h],[x,-y,h],[x,y,h],[-x,y,h]
+ ];
+ const verts=local.map(v=>{
+  const p=transformModelPoint(cx,cy,cz,v[0],v[1],v[2],rot);
+  return project3DPoint(p.x,p.y,p.z);
+ });
+ if(verts.some(v=>!v))return;
+
+ const faces=[
+  {idx:[0,1,5,4],s:.82},
+  {idx:[1,2,6,5],s:1.02},
+  {idx:[2,3,7,6],s:.70},
+  {idx:[3,0,4,7],s:.88},
+  {idx:[4,5,6,7],s:1.12},
+  {idx:[0,3,2,1],s:.58}
+ ];
+
+ const draws=faces.map(f=>{
+  const pts=f.idx.map(i=>verts[i]);
+  return {pts,depth:f.idx.reduce((sum,i)=>sum+verts[i].forward,0)/4,shade:f.s*shade};
+ }).sort((a,b)=>b.depth-a.depth);
+
+ for(const face of draws){
+  const centerX=face.pts.reduce((s,p)=>s+p.sx,0)/face.pts.length;
+  const xi=Math.max(0,Math.min(W-1,Math.floor(centerX)));
+  if(face.depth>depthBuffer[xi]*1.01)continue;
+
+  ctx.fillStyle=rgb(color,face.shade);
+  ctx.beginPath();
+  ctx.moveTo(face.pts[0].sx,face.pts[0].sy);
+  for(let i=1;i<face.pts.length;i++)ctx.lineTo(face.pts[i].sx,face.pts[i].sy);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle="rgba(190,240,255,.06)";
+  ctx.stroke();
+ }
+}
+function drawLowPolyCylinder(cx,cy,cz,r,h,rot,color,sides=8){
+ const pts=[];
+ for(let i=0;i<sides;i++){
+  const a=rot+(i/sides)*Math.PI*2;
+  pts.push(project3DPoint(cx+Math.cos(a)*r,cy+Math.sin(a)*r,cz));
+ }
+ const topPts=[];
+ for(let i=0;i<sides;i++){
+  const a=rot+(i/sides)*Math.PI*2;
+  topPts.push(project3DPoint(cx+Math.cos(a)*r,cy+Math.sin(a)*r,cz+h));
+ }
+ if(pts.some(v=>!v)||topPts.some(v=>!v))return;
+
+ const faces=[];
+ for(let i=0;i<sides;i++){
+  const j=(i+1)%sides;
+  faces.push({
+   pts:[pts[i],pts[j],topPts[j],topPts[i]],
+   depth:(pts[i].forward+pts[j].forward+topPts[i].forward+topPts[j].forward)/4,
+   shade:.72+.42*(i/sides)
+  });
+ }
+ faces.push({pts:topPts,depth:topPts.reduce((s,p)=>s+p.forward,0)/sides,shade:1.13});
+ faces.sort((a,b)=>b.depth-a.depth);
+
+ for(const face of faces){
+  const centerX=face.pts.reduce((s,p)=>s+p.sx,0)/face.pts.length;
+  const xi=Math.max(0,Math.min(W-1,Math.floor(centerX)));
+  if(face.depth>depthBuffer[xi]*1.01)continue;
+  ctx.fillStyle=rgb(color,face.shade);
+  ctx.beginPath();
+  ctx.moveTo(face.pts[0].sx,face.pts[0].sy);
+  for(let i=1;i<face.pts.length;i++)ctx.lineTo(face.pts[i].sx,face.pts[i].sy);
+  ctx.closePath();ctx.fill();
+ }
+}
+
 function visibleEnough(p){
  if(!p)return false;
  const left=Math.floor(p.sx-p.w/2),right=Math.ceil(p.sx+p.w/2);
  for(let x=Math.max(0,left);x<=Math.min(W-1,right);x++){
-  if(p.forward<depthBuffer[x]*.98)return true;
+  if(p.forward<depthBuffer[x]*1.02)return true;
  }
  return false;
 }
 function drawEnemy(e,p){
- if(!visibleEnough(p))return;
- const x=p.sx,top=p.top,w=p.w,h=p.h;
- ctx.fillStyle="#ff477e";
- ctx.beginPath();ctx.arc(x,top+h*.18,w*.20,0,Math.PI*2);ctx.fill();
- ctx.fillRect(x-w*.30,top+h*.32,w*.60,h*.40);
- ctx.fillStyle="#731833";
- ctx.fillRect(x-w*.28,top+h*.70,w*.20,h*.25);
- ctx.fillRect(x+w*.08,top+h*.70,w*.20,h*.25);
+ if(!e||!p||!visibleEnough(p))return;
+
+ const rot=Math.atan2(player.y-e.y,player.x-e.x);
+ const bob=Math.sin(performance.now()/180+e.phase)*.025;
+
+ /* Legs */
+ drawCuboid(e.x-.11*Math.cos(rot),e.y-.11*Math.sin(rot),.05,.16,.16,.70,rot,[70,18,38]);
+ drawCuboid(e.x+.11*Math.cos(rot),e.y+.11*Math.sin(rot),.05,.16,.16,.70,rot,[70,18,38]);
+
+ /* Torso */
+ drawCuboid(e.x,e.y,.68,.62,.38,.72,rot,[235,48,92]);
+
+ /* Shoulder armor */
+ drawCuboid(e.x-.34*Math.sin(rot),e.y+.34*Math.cos(rot),1.05,.19,.27,.22,rot,[255,76,118]);
+ drawCuboid(e.x+.34*Math.sin(rot),e.y-.34*Math.cos(rot),1.05,.19,.27,.22,rot,[255,76,118]);
+
+ /* Arms */
+ drawCuboid(e.x-.40*Math.sin(rot),e.y+.40*Math.cos(rot),.62,.16,.16,.60,rot+.12,[182,35,75]);
+ drawCuboid(e.x+.40*Math.sin(rot),e.y-.40*Math.cos(rot),.62,.16,.16,.60,rot-.12,[182,35,75]);
+
+ /* Head */
+ drawLowPolyCylinder(e.x,e.y,1.42,.25,.30,rot,[255,91,132],8);
+
+ /* Visor */
+ const front=transformModelPoint(e.x,e.y,0,0,-.0,0,rot);
+ const eye=project3DPoint(
+   e.x+Math.cos(rot)*.22,
+   e.y+Math.sin(rot)*.22,
+   1.52+bob
+ );
+ if(eye && eye.forward<depthBuffer[Math.max(0,Math.min(W-1,Math.floor(eye.sx)))]*1.02){
+  ctx.fillStyle="#eaffff";
+  ctx.fillRect(eye.sx-4,eye.sy-2,8,4);
+ }
 }
-function drawShot(p){
- if(!p||!visibleEnough(p))return;
- const size=Math.max(2,9/p.forward);
- ctx.fillStyle="#98faff";ctx.beginPath();ctx.arc(p.sx,p.top,size,0,Math.PI*2);ctx.fill();
-}
+
 function drawPlayer(){
  const p=project(player.x,player.y,0,player.height);
  if(!p||!visibleEnough(p))return;
- const x=p.sx,top=p.top,w=p.w,h=p.h;
- ctx.fillStyle="#58dfff";ctx.fillRect(x-w*.43,top+h*.30,w*.86,h*.50);
- ctx.beginPath();ctx.arc(x,top+h*.15,w*.22,0,Math.PI*2);ctx.fill();
- ctx.fillStyle="#17677f";ctx.fillRect(x-w*.35,top+h*.78,w*.23,h*.20);ctx.fillRect(x+w*.12,top+h*.78,w*.23,h*.20);
+
+ const rot=cameraYaw;
+ const sway=Math.sin(performance.now()/150)*.018;
+
+ /* Shadow on floor */
+ const foot=project3DPoint(player.x,player.y,0.01);
+ if(foot){
+  const scale=Math.max(3,35/Math.max(.4,foot.forward));
+  const xi=Math.max(0,Math.min(W-1,Math.floor(foot.sx)));
+  if(foot.forward<depthBuffer[xi]*1.02){
+   ctx.fillStyle="rgba(0,0,0,.28)";
+   ctx.beginPath();
+   ctx.ellipse(foot.sx,foot.sy+2,scale*1.2,scale*.45,0,0,Math.PI*2);
+   ctx.fill();
+  }
+ }
+
+ /* Legs */
+ drawCuboid(player.x-.12*Math.sin(rot),player.y+.12*Math.cos(rot),.05,.18,.18,.75,rot,[24,76,96]);
+ drawCuboid(player.x+.12*Math.sin(rot),player.y-.12*Math.cos(rot),.05,.18,.18,.75,rot,[31,101,125]);
+
+ /* Torso + chest plate */
+ drawCuboid(player.x,player.y,.78,.66,.40,.78,rot,[53,183,214]);
+ drawCuboid(player.x+Math.cos(rot)*.035,player.y+Math.sin(rot)*.035,1.03,.50,.26,.35,rot,[92,226,244]);
+
+ /* Arms */
+ drawCuboid(player.x-.41*Math.sin(rot),player.y+.41*Math.cos(rot),.65,.17,.17,.62,rot-.10+sway,[31,129,159]);
+ drawCuboid(player.x+.41*Math.sin(rot),player.y-.41*Math.cos(rot),.65,.17,.17,.62,rot+.10-sway,[31,129,159]);
+
+ /* Head */
+ drawLowPolyCylinder(player.x,player.y,1.56,.25,.30,rot,[102,224,239],8);
+
+ /* Back unit */
+ drawCuboid(
+  player.x-Math.cos(rot)*.23,
+  player.y-Math.sin(rot)*.23,
+  .92,
+  .36,.18,.48,
+  rot,
+  [27,54,72]
+ );
+
+ /* Small head visor */
+ const visor=project3DPoint(
+  player.x+Math.cos(rot)*.225,
+  player.y+Math.sin(rot)*.225,
+  1.68
+ );
+ if(visor && visor.forward<depthBuffer[Math.max(0,Math.min(W-1,Math.floor(visor.sx)))]*1.02){
+  ctx.fillStyle="#dfffff";
+  ctx.fillRect(visor.sx-5,visor.sy-2,10,4);
+ }
 }
+
 function drawObjects(){
  const arr=[];
  for(const e of enemies)arr.push({type:"enemy",p:project(e.x,e.y,0,e.height)});
