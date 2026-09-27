@@ -158,7 +158,14 @@ function spawnEnemy(){
 function fire(){
  if(player.cooldown>0||gameOver||!mouseLocked)return;
  player.cooldown=.16;
- projectiles.push({x:player.x,y:player.y,dx:Math.cos(cameraYaw),dy:Math.sin(cameraYaw),speed:14,life:1.5});
+ projectiles.push({
+   x:player.x+Math.cos(cameraYaw)*.35,
+   y:player.y+Math.sin(cameraYaw)*.35,
+   dx:Math.cos(cameraYaw),
+   dy:Math.sin(cameraYaw),
+   speed:14,
+   life:1.5
+  });
  burst(player.x+Math.cos(cameraYaw)*.3,player.y+Math.sin(cameraYaw)*.3,5);
 }
 
@@ -509,97 +516,238 @@ function visibleEnough(p){
  return false;
 }
 function drawEnemy(e,p){
- if(!e||!p||!visibleEnough(p))return;
+ if(!e||!p)return;
 
  const rot=Math.atan2(player.y-e.y,player.x-e.x);
  const bob=Math.sin(performance.now()/180+e.phase)*.025;
 
- /* Legs */
- drawCuboid(e.x-.11*Math.cos(rot),e.y-.11*Math.sin(rot),.05,.16,.16,.70,rot,[70,18,38]);
- drawCuboid(e.x+.11*Math.cos(rot),e.y+.11*Math.sin(rot),.05,.16,.16,.70,rot,[70,18,38]);
+ /* Simple low-poly enemy: legs, torso, shoulders, arms, head. */
+ drawCuboid(e.x-.11*Math.sin(rot),e.y+.11*Math.cos(rot),.05,.16,.16,.68,rot,[72,18,40]);
+ drawCuboid(e.x+.11*Math.sin(rot),e.y-.11*Math.cos(rot),.05,.16,.16,.68,rot,[72,18,40]);
 
- /* Torso */
- drawCuboid(e.x,e.y,.68,.62,.38,.72,rot,[235,48,92]);
+ drawCuboid(e.x,e.y,.67,.62,.38,.70,rot,[235,48,92]);
+ drawCuboid(e.x,e.y,1.34,.28,.28,.34,rot,[255,83,125]);
 
- /* Shoulder armor */
- drawCuboid(e.x-.34*Math.sin(rot),e.y+.34*Math.cos(rot),1.05,.19,.27,.22,rot,[255,76,118]);
- drawCuboid(e.x+.34*Math.sin(rot),e.y-.34*Math.cos(rot),1.05,.19,.27,.22,rot,[255,76,118]);
+ drawCuboid(e.x-.39*Math.sin(rot),e.y+.39*Math.cos(rot),.69,.17,.17,.58,rot+.10,[180,35,74]);
+ drawCuboid(e.x+.39*Math.sin(rot),e.y-.39*Math.cos(rot),.69,.17,.17,.58,rot-.10,[180,35,74]);
 
- /* Arms */
- drawCuboid(e.x-.40*Math.sin(rot),e.y+.40*Math.cos(rot),.62,.16,.16,.60,rot+.12,[182,35,75]);
- drawCuboid(e.x+.40*Math.sin(rot),e.y-.40*Math.cos(rot),.62,.16,.16,.60,rot-.12,[182,35,75]);
+ drawCuboid(e.x-.32*Math.sin(rot),e.y+.32*Math.cos(rot),1.03,.22,.30,.20,rot,[255,72,112]);
+ drawCuboid(e.x+.32*Math.sin(rot),e.y-.32*Math.cos(rot),1.03,.22,.30,.20,rot,[255,72,112]);
 
- /* Head */
- drawLowPolyCylinder(e.x,e.y,1.42,.25,.30,rot,[255,91,132],8);
-
- /* Visor */
- const front=transformModelPoint(e.x,e.y,0,0,-.0,0,rot);
  const eye=project3DPoint(
-   e.x+Math.cos(rot)*.22,
-   e.y+Math.sin(rot)*.22,
-   1.52+bob
+   e.x+Math.cos(rot)*.24,
+   e.y+Math.sin(rot)*.24,
+   1.48+bob
  );
- if(eye && eye.forward<depthBuffer[Math.max(0,Math.min(W-1,Math.floor(eye.sx)))]*1.02){
-  ctx.fillStyle="#eaffff";
-  ctx.fillRect(eye.sx-4,eye.sy-2,8,4);
+ if(eye){
+   ctx.fillStyle="#eaffff";
+   ctx.fillRect(eye.sx-5,eye.sy-2,10,4);
  }
 }
 
 function drawPlayer(){
- const p=project(player.x,player.y,0,player.height);
- if(!p||!visibleEnough(p))return;
-
+ /*
+   Deliberately draw the player model without the old whole-sprite
+   visibility gate. The player is the camera's controlled character,
+   so walls should not be allowed to make the entire model disappear.
+ */
  const rot=cameraYaw;
- const sway=Math.sin(performance.now()/150)*.018;
+ const base=project3DPoint(player.x,player.y,0);
+ if(!base)return;
 
- /* Shadow on floor */
- const foot=project3DPoint(player.x,player.y,0.01);
- if(foot){
-  const scale=Math.max(3,35/Math.max(.4,foot.forward));
-  const xi=Math.max(0,Math.min(W-1,Math.floor(foot.sx)));
-  if(foot.forward<depthBuffer[xi]*1.02){
-   ctx.fillStyle="rgba(0,0,0,.28)";
-   ctx.beginPath();
-   ctx.ellipse(foot.sx,foot.sy+2,scale*1.2,scale*.45,0,0,Math.PI*2);
-   ctx.fill();
-  }
- }
+ const bodyDepth=base.forward;
+ const focal=(W/2)/Math.tan(FOV/2);
+ const modelScale=Math.max(0.18,Math.min(1.4,1/bodyDepth*focal*.012));
 
- /* Legs */
- drawCuboid(player.x-.12*Math.sin(rot),player.y+.12*Math.cos(rot),.05,.18,.18,.75,rot,[24,76,96]);
- drawCuboid(player.x+.12*Math.sin(rot),player.y-.12*Math.cos(rot),.05,.18,.18,.75,rot,[31,101,125]);
+ /* Shadow */
+ ctx.save();
+ ctx.fillStyle="rgba(0,0,0,.32)";
+ ctx.beginPath();
+ const shadowSize=Math.max(8,42/bodyDepth);
+ ctx.ellipse(base.sx,base.sy+4,shadowSize*1.25,shadowSize*.48,0,0,Math.PI*2);
+ ctx.fill();
+ ctx.restore();
 
- /* Torso + chest plate */
- drawCuboid(player.x,player.y,.78,.66,.40,.78,rot,[53,183,214]);
- drawCuboid(player.x+Math.cos(rot)*.035,player.y+Math.sin(rot)*.035,1.03,.50,.26,.35,rot,[92,226,244]);
+ /*
+   Main low-poly body. drawCuboid creates actual 3D box faces
+   in world space and projects them into the third-person view.
+ */
+ const sway=Math.sin(performance.now()/160)*.022;
+
+ drawCuboid(
+   player.x-.12*Math.sin(rot),
+   player.y+.12*Math.cos(rot),
+   .05,
+   .20,.20,.76,
+   rot,
+   [28,83,103]
+ );
+
+ drawCuboid(
+   player.x+.12*Math.sin(rot),
+   player.y-.12*Math.cos(rot),
+   .05,
+   .20,.20,.76,
+   rot,
+   [35,105,128]
+ );
+
+ /* Torso */
+ drawCuboid(
+   player.x,
+   player.y,
+   .79,
+   .70,.44,.78,
+   rot,
+   [48,180,213]
+ );
+
+ /* Chest plate */
+ drawCuboid(
+   player.x+Math.cos(rot)*.035,
+   player.y+Math.sin(rot)*.035,
+   1.05,
+   .54,.30,.34,
+   rot,
+   [95,229,246]
+ );
+
+ /* Shoulder pads */
+ drawCuboid(
+   player.x-.42*Math.sin(rot),
+   player.y+.42*Math.cos(rot),
+   1.08,
+   .22,.32,.23,
+   rot,
+   [77,208,229]
+ );
+
+ drawCuboid(
+   player.x+.42*Math.sin(rot),
+   player.y-.42*Math.cos(rot),
+   1.08,
+   .22,.32,.23,
+   rot,
+   [77,208,229]
+ );
 
  /* Arms */
- drawCuboid(player.x-.41*Math.sin(rot),player.y+.41*Math.cos(rot),.65,.17,.17,.62,rot-.10+sway,[31,129,159]);
- drawCuboid(player.x+.41*Math.sin(rot),player.y-.41*Math.cos(rot),.65,.17,.17,.62,rot+.10-sway,[31,129,159]);
+ drawCuboid(
+   player.x-.43*Math.sin(rot),
+   player.y+.43*Math.cos(rot),
+   .66,
+   .18,.18,.63,
+   rot-.10+sway,
+   [32,128,158]
+ );
 
- /* Head */
- drawLowPolyCylinder(player.x,player.y,1.56,.25,.30,rot,[102,224,239],8);
+ drawCuboid(
+   player.x+.43*Math.sin(rot),
+   player.y-.43*Math.cos(rot),
+   .66,
+   .18,.18,.63,
+   rot+.10-sway,
+   [32,128,158]
+ );
+
+ /* Head / helmet */
+ drawLowPolyCylinder(
+   player.x,
+   player.y,
+   1.56,
+   .27,
+   .32,
+   rot,
+   [103,228,242],
+   8
+ );
 
  /* Back unit */
  drawCuboid(
-  player.x-Math.cos(rot)*.23,
-  player.y-Math.sin(rot)*.23,
-  .92,
-  .36,.18,.48,
-  rot,
-  [27,54,72]
+   player.x-Math.cos(rot)*.25,
+   player.y-Math.sin(rot)*.25,
+   .92,
+   .38,.20,.50,
+   rot,
+   [24,52,70]
  );
 
- /* Small head visor */
- const visor=project3DPoint(
-  player.x+Math.cos(rot)*.225,
-  player.y+Math.sin(rot)*.225,
-  1.68
+ /*
+   Weapon: clearly attached to the right hand and pointed in
+   the same direction as the camera. This makes the center
+   crosshair the aiming reference, Warframe-like.
+ */
+ const gunX=
+   player.x+
+   Math.cos(rot)*.42-
+   Math.sin(rot)*.43;
+
+ const gunY=
+   player.y+
+   Math.sin(rot)*.42+
+   Math.cos(rot)*.43;
+
+ const gunZ=1.00;
+
+ drawCuboid(
+   gunX,
+   gunY,
+   gunZ,
+   .14,.14,.72,
+   rot,
+   [30,45,63]
  );
- if(visor && visor.forward<depthBuffer[Math.max(0,Math.min(W-1,Math.floor(visor.sx)))]*1.02){
-  ctx.fillStyle="#dfffff";
-  ctx.fillRect(visor.sx-5,visor.sy-2,10,4);
+
+ /* Energy emitter on the weapon */
+ const muzzleX=
+   gunX+
+   Math.cos(rot)*.42;
+
+ const muzzleY=
+   gunY+
+   Math.sin(rot)*.42;
+
+ const muzzle=project3DPoint(
+   muzzleX,
+   muzzleY,
+   gunZ+.06
+ );
+
+ if(muzzle){
+   const r=Math.max(2,5/muzzle.forward);
+   ctx.fillStyle="#8df8ff";
+   ctx.beginPath();
+   ctx.arc(muzzle.sx,muzzle.sy,r,0,Math.PI*2);
+   ctx.fill();
  }
+}
+
+function drawObjects(){
+ /*
+   Far-to-near for enemies/projectiles first.
+   Player is deliberately drawn last so it remains visible
+   as the controlled third-person character.
+ */
+ const arr=[];
+
+ for(const e of enemies){
+   const p=project(e.x,e.y,0,e.height);
+   if(p)arr.push({type:"enemy",p,entity:e});
+ }
+
+ for(const s of projectiles){
+   const p=project(s.x,s.y,1,.15);
+   if(p)arr.push({type:"shot",p,entity:s});
+ }
+
+ arr.sort((a,b)=>b.p.forward-a.p.forward);
+
+ for(const o of arr){
+   if(o.type==="enemy")drawEnemy(o.entity,o.p);
+   else drawShot(o.p);
+ }
+
+ drawPlayer();
 }
 
 function drawObjects(){
