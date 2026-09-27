@@ -118,7 +118,7 @@ function clearLine(x1,y1,x2,y2){
   return true;
 }
 
-const player={x:2.5,y:2.5,r:.22,speed:3,hp:100};
+const player={x:2.5,y:2.5,r:.28,speed:3,hp:100};
 const camera={yaw:0,pitch:0,distance:3.2};
 let enemies=[];
 let bullets=[];
@@ -206,22 +206,29 @@ function shoot(){
   if(fireTimer>0||gameOver||!mouseLocked)return;
   fireTimer=.15;
 
-  // Use the camera center (the reticle) as the aim direction.
+  // Aim exactly through the screen-center reticle.
   const cam=getCameraPosition();
+  const viewX=Math.cos(camera.yaw)*Math.cos(camera.pitch);
+  const viewY=Math.sin(camera.yaw)*Math.cos(camera.pitch);
+  const viewZ=Math.sin(camera.pitch);
   const aimDistance=20;
-  const flatAim= Math.cos(camera.pitch)*aimDistance;
-  const targetX=cam.x+Math.cos(camera.yaw)*flatAim;
-  const targetY=cam.y+Math.sin(camera.yaw)*flatAim;
 
-  let dx=targetX-player.x;
-  let dy=targetY-player.y;
-  const len=Math.hypot(dx,dy)||1;
-  dx/=len;dy/=len;
+  const aimX=cam.x+viewX*aimDistance;
+  const aimY=cam.y+viewY*aimDistance;
+  const aimZ=cam.z+viewZ*aimDistance;
 
-  const sx=player.x+dx*.45;
-  const sy=player.y+dy*.45;
-  bullets.push({x:sx,y:sy,dx:dx,dy:dy,life:1.2});
-  particles.push({x:sx,y:sy,life:.12});
+  const muzzleX=player.x+Math.cos(camera.yaw)*.45-Math.sin(camera.yaw)*.42;
+  const muzzleY=player.y+Math.sin(camera.yaw)*.45+Math.cos(camera.yaw)*.42;
+  const muzzleZ=1.0;
+
+  let dx=aimX-muzzleX;
+  let dy=aimY-muzzleY;
+  let dz=aimZ-muzzleZ;
+  const len=Math.hypot(dx,dy,dz)||1;
+  dx/=len;dy/=len;dz/=len;
+
+  bullets.push({x:muzzleX,y:muzzleY,z:muzzleZ,dx:dx,dy:dy,dz:dz,life:1.2});
+  particles.push({x:muzzleX,y:muzzleY,z:muzzleZ,life:.12});
 }
 
 function updatePlayer(dt){
@@ -241,15 +248,25 @@ function updatePlayer(dt){
 function updateBullets(dt){
   for(let i=bullets.length-1;i>=0;i--){
     const b=bullets[i];
-    const oldX=b.x,oldY=b.y;
-    b.x+=b.dx*14*dt;
-    b.y+=b.dy*14*dt;
-    b.life-=dt;
-    let remove=b.life<=0||wall(b.x,b.y);
-    if(!remove){
+    const oldX=b.x,oldY=b.y,oldZ=b.z;
+    const travel=14*dt;
+    const steps=Math.max(1,Math.ceil(travel/.06));
+    let remove=false;
+
+    for(let s=0;s<steps&&!remove;s++){
+      b.x+=b.dx*travel/steps;
+      b.y+=b.dy*travel/steps;
+      b.z+=b.dz*travel/steps;
+
+      if(wall(b.x,b.y)||b.z<-2||b.z>6){
+        remove=true;
+        break;
+      }
+
       for(let j=enemies.length-1;j>=0;j--){
         const e=enemies[j];
-        if(Math.hypot(b.x-e.x,b.y-e.y)<e.r+.13){
+        const horizontal=Math.hypot(b.x-e.x,b.y-e.y);
+        if(horizontal<e.r+.11&&b.z>-0.05&&b.z<1.75){
           e.hp--;
           remove=true;
           if(e.hp<=0){
@@ -260,9 +277,18 @@ function updateBullets(dt){
         }
       }
     }
+
+    b.life-=dt;
+    if(b.life<=0)remove=true;
+
     if(remove)bullets.splice(i,1);
     if(!remove){
-      particles.push({x:(oldX+b.x)/2,y:(oldY+b.y)/2,life:.04});
+      particles.push({
+        x:(oldX+b.x)/2,
+        y:(oldY+b.y)/2,
+        z:(oldZ+b.z)/2,
+        life:.04
+      });
     }
   }
 }
@@ -338,17 +364,32 @@ function update(dt){
 const FOV=Math.PI/3;
 
 function getCameraPosition(){
-  // Real third-person camera: behind and slightly to the left of the player.
+  // Real third-person camera, clipped against walls so the view cannot enter them.
   const backX=-Math.cos(camera.yaw)*camera.distance;
   const backY=-Math.sin(camera.yaw)*camera.distance;
   const shoulder=-.55;
   const sideX=Math.cos(camera.yaw+Math.PI/2)*shoulder;
   const sideY=Math.sin(camera.yaw+Math.PI/2)*shoulder;
-  return {
-    x:player.x+backX+sideX,
-    y:player.y+backY+sideY,
-    z:1.72
-  };
+
+  const desiredX=player.x+backX+sideX;
+  const desiredY=player.y+backY+sideY;
+  const dx=desiredX-player.x;
+  const dy=desiredY-player.y;
+  const distance=Math.hypot(dx,dy);
+  const steps=Math.max(1,Math.ceil(distance/.04));
+  let camX=player.x;
+  let camY=player.y;
+
+  for(let i=1;i<=steps;i++){
+    const t=i/steps;
+    const nx=player.x+dx*t;
+    const ny=player.y+dy*t;
+    if(blocked(nx,ny,.14))break;
+    camX=nx;
+    camY=ny;
+  }
+
+  return {x:camX,y:camY,z:1.72};
 }
 
 function project(x,y,z){
@@ -496,7 +537,7 @@ function drawPlayer(){
 
 function drawBullets(){
   for(const b of bullets){
-    const p=project(b.x,b.y,1.05);
+    const p=project(b.x,b.y,b.z);
     if(!p)continue;
     const r=Math.max(2,7/p.forward);
     ctx.fillStyle="#a9ffff";
