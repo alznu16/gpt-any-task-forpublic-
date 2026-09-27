@@ -139,11 +139,14 @@ window.addEventListener("keyup",function(e){
   delete keys[e.key.toLowerCase()];
 });
 
-canvas.addEventListener("click",function(){
-  if(!mouseLocked&&!gameOver)canvas.requestPointerLock();
-});
 canvas.addEventListener("mousedown",function(e){
-  if(e.button===0)mouseDown=true;
+  if(e.button!==0||gameOver)return;
+  if(!mouseLocked){
+    canvas.requestPointerLock();
+    return;
+  }
+  mouseDown=true;
+  shoot();
 });
 window.addEventListener("mouseup",function(e){
   if(e.button===0)mouseDown=false;
@@ -153,6 +156,7 @@ document.addEventListener("pointerlockchange",function(){
   if(mouseLocked&&!gameOver){
     titleEl.textContent="";
     subtitleEl.textContent="";
+    shoot();
   }else if(!gameOver){
     titleEl.textContent="PAUSED";
     subtitleEl.textContent="Click to resume";
@@ -355,7 +359,8 @@ function drawBackground(){
   ctx.fillStyle=sky;
   ctx.fillRect(0,0,W,H);
 
-  const horizon=H/2+camera.pitch*H*.2;
+  const focal=(W/2)/Math.tan(FOV/2);
+  const horizon=Math.max(-H,Math.min(H*2,H/2+Math.tan(camera.pitch)*focal));
   const floor=ctx.createLinearGradient(0,horizon,0,H);
   floor.addColorStop(0,"#233a4b");
   floor.addColorStop(1,"#0a1119");
@@ -371,18 +376,30 @@ function drawBackground(){
 }
 
 function drawWalls(){
-  const horizon=H/2+camera.pitch*H*.2;
+  const cam=getCameraPosition();
   for(let x=0;x<W;x+=2){
     const angle=camera.yaw+(x/W-.5)*FOV;
     const dx=Math.cos(angle),dy=Math.sin(angle);
-    let dist=0;
-    for(let s=0;s<40;s++){
+    let dist=0,hit=false;
+    for(let s=0;s<55;s++){
       dist+=.12;
-      if(wall(player.x+dx*dist,player.y+dy*dist))break;
+      if(wall(cam.x+dx*dist,cam.y+dy*dist)){
+        hit=true;
+        break;
+      }
     }
+    if(!hit)continue;
+
     const corrected=Math.max(.12,dist*Math.cos((x/W-.5)*FOV));
-    const height=Math.min(H*1.8,H/(corrected*.72));
-    const top=horizon-height/2;
+    const wx=cam.x+dx*dist;
+    const wy=cam.y+dy*dist;
+    const bottom=project(wx,wy,0);
+    const topPoint=project(wx,wy,2.6);
+    if(!bottom||!topPoint)continue;
+
+    const top=Math.min(topPoint.sy,bottom.sy);
+    const bottomY=Math.max(topPoint.sy,bottom.sy);
+    const height=bottomY-top;
     const light=Math.max(.15,1-corrected/18);
     ctx.fillStyle="rgb("+Math.floor(24+34*light)+","+Math.floor(42+52*light)+","+Math.floor(60+68*light)+")";
     ctx.fillRect(x,top,2.2,height);
