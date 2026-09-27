@@ -55,7 +55,7 @@ document.addEventListener("pointerlockchange",()=>{
 });
 document.addEventListener("mousemove",e=>{
  if(!mouseLocked)return;
- cameraYaw-=e.movementX*.0024;
+ cameraYaw+=e.movementX*.0024;
  cameraPitch-=e.movementY*.0024;
  cameraPitch=Math.max(-.65,Math.min(.65,cameraPitch));
 });
@@ -131,7 +131,20 @@ function spawnEnemy(){
  for(let i=0;i<80;i++){
   const x=1.5+Math.random()*(MAP_W-3),y=1.5+Math.random()*(MAP_H-3);
   if(!circleHitsWall(x,y,.26)&&Math.hypot(x-player.x,y-player.y)>5){
-   enemies.push({x,y,r:.26,height:1.55,hp:1+Math.floor((wave-1)/3),speed:.65+Math.random()*.22+wave*.02,cooldown:0});return;
+   enemies.push({
+    x,y,
+    r:.26,
+    height:1.55,
+    hp:1+Math.floor((wave-1)/3),
+    speed:.65+Math.random()*.22+wave*.02,
+    cooldown:0,
+    path:[],
+    pathIndex:0,
+    pathTimer:0,
+    targetCellX:-1,
+    targetCellY:-1
+   });
+   return;
   }
  }
 }
@@ -140,6 +153,39 @@ function fire(){
  player.cooldown=.16;
  projectiles.push({x:player.x,y:player.y,dx:Math.cos(cameraYaw),dy:Math.sin(cameraYaw),speed:14,life:1.5});
  burst(player.x+Math.cos(cameraYaw)*.3,player.y+Math.sin(cameraYaw)*.3,5);
+}
+
+function findPath(startX,startY,goalX,goalY){
+ const sx=Math.floor(startX),sy=Math.floor(startY),gx=Math.floor(goalX),gy=Math.floor(goalY);
+ if(sx===gx&&sy===gy)return [];
+ const key=(x,y)=>x+","+y;
+ const q=[[sx,sy]];
+ const came=new Map();
+ came.set(key(sx,sy),null);
+ const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+ let head=0,found=false;
+ while(head<q.length){
+  const [x,y]=q[head++];
+  if(x===gx&&y===gy){found=true;break}
+  for(const [dx,dy] of dirs){
+   const nx=x+dx,ny=y+dy,k=key(nx,ny);
+   if(nx<0||nx>=MAP_W||ny<0||ny>=MAP_H)continue;
+   if(MAP[ny][nx]==="#")continue;
+   if(came.has(k))continue;
+   came.set(k,[x,y]);
+   q.push([nx,ny]);
+  }
+ }
+ if(!found)return [];
+ const path=[];
+ let cur=[gx,gy];
+ while(cur){
+  path.push({x:cur[0]+.5,y:cur[1]+.5});
+  cur=came.get(key(cur[0],cur[1]));
+ }
+ path.reverse();
+ if(path.length&&Math.hypot(path[0].x-startX,path[0].y-startY)<.75)path.shift();
+ return path;
 }
 function burst(x,y,n){for(let i=0;i<n;i++)particles.push({x,y,dx:(Math.random()-.5)*3,dy:(Math.random()-.5)*3,life:.2+Math.random()*.35})}
 function lineBlocked(x1,y1,x2,y2){
@@ -177,11 +223,54 @@ function update(dt){
  }
  for(const e of enemies){
   e.cooldown-=dt;
+  e.pathTimer-=dt;
+
   const dx=player.x-e.x,dy=player.y-e.y,d=Math.hypot(dx,dy)||1;
-  if(!lineBlocked(e.x,e.y,player.x,player.y)&&d>1){
-   moveEntity(e,dx/d*e.speed*dt,dy/d*e.speed*dt,e.r);
+  const playerCellX=Math.floor(player.x), playerCellY=Math.floor(player.y);
+
+  if(
+    e.pathTimer<=0 ||
+    e.targetCellX!==playerCellX ||
+    e.targetCellY!==playerCellY ||
+    e.pathIndex>=e.path.length
+  ){
+    e.path=findPath(e.x,e.y,player.x,player.y);
+    e.pathIndex=0;
+    e.pathTimer=.35;
+    e.targetCellX=playerCellX;
+    e.targetCellY=playerCellY;
   }
-  if(d<1&&e.cooldown<=0){player.hp-=10;e.cooldown=.55;burst(player.x,player.y,7)}
+
+  if(d>1){
+    /*
+      Direct pursuit when visible.
+      Otherwise follow the BFS path through the maze.
+      This prevents enemies from getting permanently stuck on walls.
+    */
+    if(!lineBlocked(e.x,e.y,player.x,player.y)){
+      moveEntity(e,dx/d*e.speed*dt,dy/d*e.speed*dt,e.r);
+    }else if(e.pathIndex<e.path.length){
+      const wp=e.path[e.pathIndex];
+      const wx=wp.x-e.x,wy=wp.y-e.y,wd=Math.hypot(wx,wy)||1;
+
+      if(wd<.18){
+        e.pathIndex++;
+      }else{
+        moveEntity(
+          e,
+          wx/wd*e.speed*dt,
+          wy/wd*e.speed*dt,
+          e.r
+        );
+      }
+    }
+  }
+
+  if(d<1&&e.cooldown<=0){
+    player.hp-=10;
+    e.cooldown=.55;
+    burst(player.x,player.y,7);
+  }
  }
  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.dx*dt;p.y+=p.dy*dt;p.life-=dt;if(p.life<=0)particles.splice(i,1)}
  if(player.hp<=0){
