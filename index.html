@@ -307,18 +307,45 @@ function update(dt){
 
 const FOV=Math.PI/3;
 
+function getCameraPosition(){
+  // Real third-person camera: behind and slightly to the left of the player.
+  const backX=-Math.cos(camera.yaw)*camera.distance;
+  const backY=-Math.sin(camera.yaw)*camera.distance;
+  const shoulder=-.55;
+  const sideX=Math.cos(camera.yaw+Math.PI/2)*shoulder;
+  const sideY=Math.sin(camera.yaw+Math.PI/2)*shoulder;
+  return {
+    x:player.x+backX+sideX,
+    y:player.y+backY+sideY,
+    z:1.72
+  };
+}
+
 function project(x,y,z){
-  const dx=x-player.x;
-  const dy=y-player.y;
+  const cam=getCameraPosition();
+  const dx=x-cam.x;
+  const dy=y-cam.y;
+
   const forward=Math.cos(camera.yaw)*dx+Math.sin(camera.yaw)*dy;
   const side=-Math.sin(camera.yaw)*dx+Math.cos(camera.yaw)*dy;
   if(forward<=.08)return null;
+
   const focal=(W/2)/Math.tan(FOV/2);
-  const sx=W/2+(side/forward)*focal;
-  const horizon=H/2+camera.pitch*H*.2;
-  const cameraZ=2.0;
-  const sy=horizon-(z-cameraZ)*focal/forward;
-  return {forward,side,sx,sy,focal};
+
+  // Pitch rotates the view around the camera instead of merely moving the horizon.
+  const vertical=(z-cam.z);
+  const pitchShift=vertical*Math.sin(camera.pitch);
+  const depthAdjusted=forward*Math.cos(camera.pitch)+vertical*Math.sin(camera.pitch);
+  if(depthAdjusted<=.05)return null;
+
+  const sx=W/2+(side/depthAdjusted)*focal;
+  const horizon=H/2;
+  const sy=horizon-(
+    (vertical*Math.cos(camera.pitch)-forward*Math.sin(camera.pitch))
+    /depthAdjusted
+  )*focal;
+
+  return {forward:depthAdjusted,side,sx,sy,focal};
 }
 
 function drawBackground(){
@@ -392,8 +419,8 @@ function drawEnemy(e){
   ctx.fillStyle="rgba(0,0,0,.35)";
   ctx.beginPath();ctx.ellipse(p.sx,p.sy+2,size,size*.35,0,0,Math.PI*2);ctx.fill();
 
-  drawBoxWorld(e.x,e.y,.05,.5,.38,.7,rot,[225,45,85]);
-  drawBoxWorld(e.x,e.y,.75,.32,.32,.36,rot,[255,85,125]);
+  drawBoxWorld(e.x,e.y,0,.5,.38,.70,rot,[225,45,85]);
+  drawBoxWorld(e.x,e.y,.70,.32,.32,.36,rot,[255,85,125]);
   drawBoxWorld(e.x-.22*Math.sin(rot),e.y+.22*Math.cos(rot),.65,.16,.16,.5,rot,[175,35,70]);
   drawBoxWorld(e.x+.22*Math.sin(rot),e.y-.22*Math.cos(rot),.65,.16,.16,.5,rot,[175,35,70]);
 }
