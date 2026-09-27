@@ -129,10 +129,37 @@ function reset(){
  updateHUD();
 }
 function updateCamera(){
- const dx=-Math.cos(cameraYaw)*camera.distance,dy=-Math.sin(cameraYaw)*camera.distance,len=Math.hypot(dx,dy);
+ /*
+   Shoulder camera: keep the player slightly to the right of
+   the screen so the center reticle stays clear.
+ */
+ const backX=-Math.cos(cameraYaw)*camera.distance;
+ const backY=-Math.sin(cameraYaw)*camera.distance;
+
+ const shoulder=-.72;
+ const sideX=Math.cos(cameraYaw+Math.PI/2)*shoulder;
+ const sideY=Math.sin(cameraYaw+Math.PI/2)*shoulder;
+
+ const dx=backX+sideX;
+ const dy=backY+sideY;
+ const len=Math.hypot(dx,dy);
+
  let safe=0;
- if(len>0){const steps=Math.ceil(len/.05);for(let i=1;i<=steps;i++){const t=i/steps,tx=player.x+dx*t,ty=player.y+dy*t;if(circleHitsWall(tx,ty,.10))break;safe=t}}
- camera.x=player.x+dx*safe;camera.y=player.y+dy*safe;camera.z=2.2+cameraPitch*1.4;
+
+ if(len>0){
+  const steps=Math.ceil(len/.05);
+  for(let i=1;i<=steps;i++){
+   const t=i/steps;
+   const tx=player.x+dx*t;
+   const ty=player.y+dy*t;
+   if(circleHitsWall(tx,ty,.10))break;
+   safe=t;
+  }
+ }
+
+ camera.x=player.x+dx*safe;
+ camera.y=player.y+dy*safe;
+ camera.z=2.2+cameraPitch*1.4;
 }
 function spawnEnemy(){
  for(let i=0;i<80;i++){
@@ -322,7 +349,17 @@ function drawWorld(){
 
  const horizon=H/2+cameraPitch*H*.23;
 
- /* Draw real projected floor tiles first. */
+ /*
+   Solid floor foundation. The projected tiles add detail on top,
+   but can never leave a blank gap between tiles.
+ */
+ const solidFloor=ctx.createLinearGradient(0,horizon,0,H);
+ solidFloor.addColorStop(0,"#15212c");
+ solidFloor.addColorStop(1,"#05090e");
+ ctx.fillStyle=solidFloor;
+ ctx.fillRect(0,horizon,W,H-horizon);
+
+ /* Draw real projected floor tiles over the solid base. */
  for(let my=0;my<MAP_H;my++){
   for(let mx=0;mx<MAP_W;mx++){
    if(MAP[my][mx]==="#" ) continue;
@@ -752,16 +789,27 @@ function drawObjects(){
 
 function drawObjects(){
  const arr=[];
- for(const e of enemies)arr.push({type:"enemy",p:project(e.x,e.y,0,e.height)});
- for(const s of projectiles)arr.push({type:"shot",p:project(s.x,s.y,1,.15)});
- arr.push({type:"player",p:project(player.x,player.y,0,player.height)});
- arr.sort((a,b)=>(b.p?b.p.forward:999)-(a.p?a.p.forward:999));
- for(const o of arr){
-  if(o.type==="enemy")drawEnemy(null,o.p);
-  else if(o.type==="shot")drawShot(o.p);
-  else drawPlayer();
+
+ for(const e of enemies){
+   const p=project(e.x,e.y,0,e.height);
+   if(p)arr.push({type:"enemy",p,entity:e});
  }
+
+ for(const s of projectiles){
+   const p=project(s.x,s.y,1,.15);
+   if(p)arr.push({type:"shot",p,entity:s});
+ }
+
+ arr.sort((a,b)=>b.p.forward-a.p.forward);
+
+ for(const o of arr){
+   if(o.type==="enemy")drawEnemy(o.entity,o.p);
+   else drawShot(o.p);
+ }
+
+ drawPlayer();
 }
+
 function drawWeapon(){
  const x=W*.79,y=H*.82;
  ctx.fillStyle="#182b40";ctx.fillRect(x,y,W*.12,H*.18);
