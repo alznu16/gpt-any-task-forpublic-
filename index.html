@@ -88,12 +88,24 @@ function blocked(x,y,r){
   }
   return false;
 }
+function actorBlocked(x,y,r,self){
+  if(blocked(x,y,r))return true;
+  if(self!==player){
+    if(Math.hypot(x-player.x,y-player.y)<r+player.r+.02)return true;
+  }
+  for(const e of enemies){
+    if(e===self)continue;
+    if(Math.hypot(x-e.x,y-e.y)<r+e.r+.02)return true;
+  }
+  return false;
+}
+
 function move(obj,dx,dy,r){
-  const n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/.06));
+  const n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/.04));
   const sx=dx/n,sy=dy/n;
   for(let i=0;i<n;i++){
-    if(!blocked(obj.x+sx,obj.y,r))obj.x+=sx;
-    if(!blocked(obj.x,obj.y+sy,r))obj.y+=sy;
+    if(!actorBlocked(obj.x+sx,obj.y,r,obj))obj.x+=sx;
+    if(!actorBlocked(obj.x,obj.y+sy,r,obj))obj.y+=sy;
   }
 }
 function clearLine(x1,y1,x2,y2){
@@ -183,7 +195,7 @@ function spawnEnemy(){
   for(let i=0;i<100;i++){
     const x=1.5+Math.random()*(MW-3);
     const y=1.5+Math.random()*(MH-3);
-    if(!blocked(x,y,.27)&&Math.hypot(x-player.x,y-player.y)>5){
+    if(!actorBlocked(x,y,.27,null)&&Math.hypot(x-player.x,y-player.y)>5){
       enemies.push({x:x,y:y,r:.27,hp:1+Math.floor((wave-1)/3),speed:.7+Math.random()*.25});
       return;
     }
@@ -193,9 +205,23 @@ function spawnEnemy(){
 function shoot(){
   if(fireTimer>0||gameOver||!mouseLocked)return;
   fireTimer=.15;
-  const dx=Math.cos(camera.yaw),dy=Math.sin(camera.yaw);
-  bullets.push({x:player.x+dx*.45,y:player.y+dy*.45,dx:dx,dy:dy,life:1.2});
-  particles.push({x:player.x+dx*.45,y:player.y+dy*.45,life:.12});
+
+  // Use the camera center (the reticle) as the aim direction.
+  const cam=getCameraPosition();
+  const aimDistance=20;
+  const flatAim= Math.cos(camera.pitch)*aimDistance;
+  const targetX=cam.x+Math.cos(camera.yaw)*flatAim;
+  const targetY=cam.y+Math.sin(camera.yaw)*flatAim;
+
+  let dx=targetX-player.x;
+  let dy=targetY-player.y;
+  const len=Math.hypot(dx,dy)||1;
+  dx/=len;dy/=len;
+
+  const sx=player.x+dx*.45;
+  const sy=player.y+dy*.45;
+  bullets.push({x:sx,y:sy,dx:dx,dy:dy,life:1.2});
+  particles.push({x:sx,y:sy,life:.12});
 }
 
 function updatePlayer(dt){
