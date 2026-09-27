@@ -354,8 +354,8 @@ function drawWorld(){
    but can never leave a blank gap between tiles.
  */
  const solidFloor=ctx.createLinearGradient(0,horizon,0,H);
- solidFloor.addColorStop(0,"#15212c");
- solidFloor.addColorStop(1,"#05090e");
+ solidFloor.addColorStop(0,"#1a2a37");
+ solidFloor.addColorStop(1,"#0a1017");
  ctx.fillStyle=solidFloor;
  ctx.fillRect(0,horizon,W,H-horizon);
 
@@ -554,6 +554,16 @@ function visibleEnough(p){
 }
 function drawEnemy(e,p){
  if(!e||!p)return;
+
+ /* Ground contact shadow keeps the feet visually attached to the floor. */
+ const foot=project3DPoint(e.x,e.y,.01);
+ if(foot){
+  const size=Math.max(5,26/Math.max(.4,foot.forward));
+  ctx.fillStyle="rgba(0,0,0,.30)";
+  ctx.beginPath();
+  ctx.ellipse(foot.sx,foot.sy+2,size,size*.38,0,0,Math.PI*2);
+  ctx.fill();
+ }
 
  const rot=Math.atan2(player.y-e.y,player.x-e.x);
  const bob=Math.sin(performance.now()/180+e.phase)*.025;
@@ -787,30 +797,14 @@ function drawObjects(){
  drawPlayer();
 }
 
-function drawObjects(){
- const arr=[];
-
- for(const e of enemies){
-   const p=project(e.x,e.y,0,e.height);
-   if(p)arr.push({type:"enemy",p,entity:e});
- }
-
- for(const s of projectiles){
-   const p=project(s.x,s.y,1,.15);
-   if(p)arr.push({type:"shot",p,entity:s});
- }
-
- arr.sort((a,b)=>b.p.forward-a.p.forward);
-
- for(const o of arr){
-   if(o.type==="enemy")drawEnemy(o.entity,o.p);
-   else drawShot(o.p);
- }
-
- drawPlayer();
-}
-
-function drawWeapon(){
+function drawShot(p){
+ if(!p)return;
+ const size=Math.max(2,9/p.forward);
+ ctx.fillStyle="#a9ffff";
+ ctx.beginPath();
+ ctx.arc(p.sx,p.top+Math.max(1,p.h*.5),size,0,Math.PI*2);
+ ctx.fill();
+}\nfunction drawWeapon(){
  const x=W*.79,y=H*.82;
  ctx.fillStyle="#182b40";ctx.fillRect(x,y,W*.12,H*.18);
  ctx.fillStyle="#71edff";ctx.fillRect(x+W*.045,y-H*.06,W*.03,H*.12);
