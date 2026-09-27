@@ -1,75 +1,53 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Neon Breach - Third Person Prototype</title>
+<title>Neon Breach - Clean Prototype</title>
 <style>
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#04070d;color:white;font-family:Arial,system-ui,sans-serif}
-canvas{display:block;width:100vw;height:100vh;background:#07101b}
-#hud{position:fixed;top:15px;left:15px;right:15px;display:flex;justify-content:space-between;pointer-events:none;font-weight:bold;text-shadow:0 2px 7px #000}
-.panel{background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.16);border-radius:11px;padding:10px 14px}
-#hpbar{width:210px;height:10px;margin-top:5px;border-radius:20px;background:#1d2636;overflow:hidden}
-#hp{width:100%;height:100%;background:#50e28b}
-#crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;font-size:25px;font-weight:bold}
-#message{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;text-shadow:0 3px 12px #000}
-#title{font-size:34px;font-weight:900}
-#subtitle{margin-top:7px;opacity:.9}
-#help{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:8px 13px;font-size:13px;pointer-events:none;white-space:nowrap}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05080d;color:#fff;font-family:Arial,sans-serif}
+canvas{display:block;width:100vw;height:100vh;background:#08111b}
+#hud{position:fixed;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;pointer-events:none}
+.panel{background:rgba(0,0,0,.55);padding:10px 13px;border:1px solid rgba(255,255,255,.15);border-radius:10px;text-shadow:0 2px 5px #000}
+#crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font-size:25px;font-weight:bold;pointer-events:none}
+#message{position:fixed;left:50%;top:43%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;text-shadow:0 3px 12px #000}
+#title{font-size:32px;font-weight:900}
+#subtitle{margin-top:7px}
+#help{position:fixed;bottom:13px;left:50%;transform:translateX(-50%);padding:8px 12px;background:rgba(0,0,0,.55);border-radius:8px;font-size:13px;pointer-events:none;white-space:nowrap}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <div id="hud">
-<div class="panel"><div style="font-weight:900;letter-spacing:.1em">NEON BREACH</div>
-Score: <span id="score">0</span> &nbsp; Wave: <span id="wave">1</span><br>
-HP<div id="hpbar"><div id="hp"></div></div></div>
-<div class="panel">Enemies: <span id="enemyCount">0</span><br>Best: <span id="best">0</span></div>
+  <div class="panel"><b>NEON BREACH</b><br>Score: <span id="score">0</span> · Wave: <span id="wave">1</span><br>HP: <span id="hp">100</span></div>
+  <div class="panel">Enemies: <span id="enemies">0</span></div>
 </div>
 <div id="crosshair">+</div>
-<div id="message"><div id="title">CLICK TO PLAY</div><div id="subtitle">WASD move · Mouse look · Left click fire</div></div>
-<div id="help">Click = Mouse Lock · WASD = Move · Mouse = Camera · Left Click = Fire · R = Restart</div>
+<div id="message"><div id="title">CLICK TO PLAY</div><div id="subtitle">WASD · Mouse · Left Click</div></div>
+<div id="help">Click = mouse lock · WASD = move · Mouse = look · Left Click = fire · Esc = unlock · R = restart</div>
+
 <script>
 (function(){
 "use strict";
-const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
-const scoreEl=document.getElementById("score"),waveEl=document.getElementById("wave"),hpEl=document.getElementById("hp"),enemyCountEl=document.getElementById("enemyCount"),bestEl=document.getElementById("best"),titleEl=document.getElementById("title"),subtitleEl=document.getElementById("subtitle");
+
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+const scoreEl=document.getElementById("score");
+const waveEl=document.getElementById("wave");
+const hpEl=document.getElementById("hp");
+const enemiesEl=document.getElementById("enemies");
+const titleEl=document.getElementById("title");
+const subtitleEl=document.getElementById("subtitle");
+
 let W=0,H=0;
-let depthBuffer=new Float32Array(1);
 function resize(){
- W=innerWidth;
- H=innerHeight;
- canvas.width=W;
- canvas.height=H;
- depthBuffer=new Float32Array(Math.max(1,W));
+  W=window.innerWidth;
+  H=window.innerHeight;
+  canvas.width=W;
+  canvas.height=H;
 }
-addEventListener("resize",resize);resize();
-
-const keys={};
-addEventListener("keydown",e=>{
- const k=e.key.toLowerCase(); keys[k]=true;
- if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(k))e.preventDefault();
- if(k==="r"&&gameOver)reset();
-});
-addEventListener("keyup",e=>delete keys[e.key.toLowerCase()]);
-
-let mouseLocked=false,mouseDown=false,cameraYaw=0,cameraPitch=0;
-canvas.addEventListener("click",()=>{if(!mouseLocked)canvas.requestPointerLock()});
-document.addEventListener("pointerlockchange",()=>{
- mouseLocked=document.pointerLockElement===canvas;
- if(mouseLocked&&!gameOver){titleEl.textContent="";subtitleEl.textContent=""}
- else if(!gameOver){titleEl.textContent="PAUSED";subtitleEl.textContent="Click to resume"}
-});
-document.addEventListener("mousemove",e=>{
- if(!mouseLocked)return;
- cameraYaw+=e.movementX*.0024;
- cameraPitch-=e.movementY*.0024;
- cameraPitch=Math.max(-.65,Math.min(.65,cameraPitch));
-});
-canvas.addEventListener("mousedown",e=>{if(e.button===0)mouseDown=true});
-addEventListener("mouseup",e=>{if(e.button===0)mouseDown=false});
-addEventListener("blur",()=>{mouseDown=false;document.exitPointerLock()});
-document.addEventListener("visibilitychange",()=>{if(document.hidden){mouseDown=false;document.exitPointerLock()}});
+window.addEventListener("resize",resize);
+resize();
 
 const MAP=[
 "################",
@@ -89,732 +67,398 @@ const MAP=[
 "#..............#",
 "################"
 ];
-const MAP_W=MAP[0].length,MAP_H=MAP.length;
+const MW=MAP[0].length,MH=MAP.length;
 
-function isWall(x,y){
- const mx=Math.floor(x),my=Math.floor(y);
- if(mx<0||mx>=MAP_W||my<0||my>=MAP_H)return true;
- return MAP[my][mx]==="#";
+function wall(x,y){
+  const mx=Math.floor(x),my=Math.floor(y);
+  return mx<0||my<0||mx>=MW||my>=MH||MAP[my][mx]==="#";
 }
-function circleHitsWall(x,y,r){
- const minX=Math.floor(x-r),maxX=Math.floor(x+r),minY=Math.floor(y-r),maxY=Math.floor(y+r);
- for(let my=minY;my<=maxY;my++)for(let mx=minX;mx<=maxX;mx++){
-  if(my<0||my>=MAP_H||mx<0||mx>=MAP_W)return true;
-  if(MAP[my][mx]!=="#")continue;
-  const cx=Math.max(mx,Math.min(x,mx+1)),cy=Math.max(my,Math.min(y,my+1));
-  const dx=x-cx,dy=y-cy;
-  if(dx*dx+dy*dy<r*r)return true;
- }
- return false;
-}
-function moveEntity(e,dx,dy,r){
- const dist=Math.hypot(dx,dy),steps=Math.max(1,Math.ceil(dist/.07)),sx=dx/steps,sy=dy/steps;
- for(let i=0;i<steps;i++){
-  if(!circleHitsWall(e.x+sx,e.y,r))e.x+=sx;
-  if(!circleHitsWall(e.x,e.y+sy,r))e.y+=sy;
- }
-}
-
-const player={x:2.5,y:2.5,r:.2,height:1.65,speed:3,hp:100,cooldown:0};
-const camera={x:player.x,y:player.y,z:2.2,distance:3.4};
-let enemies=[],projectiles=[],particles=[],score=0,wave=1,spawnTimer=0,gameOver=false;
-let best=Number(localStorage.getItem("neon_3rd_person_best")||0);bestEl.textContent=best;
-
-
-function reset(){
- player.x=2.5;player.y=2.5;player.hp=100;player.cooldown=0;
- enemies=[];projectiles=[];particles=[];score=0;wave=1;spawnTimer=0;gameOver=false;
- cameraYaw=0;cameraPitch=0;
- titleEl.textContent="CLICK TO PLAY";subtitleEl.textContent="WASD move · Mouse look · Left click fire";
- updateHUD();
-}
-function updateCamera(){
- /*
-   Shoulder camera: keep the player slightly to the right of
-   the screen so the center reticle stays clear.
- */
- const backX=-Math.cos(cameraYaw)*camera.distance;
- const backY=-Math.sin(cameraYaw)*camera.distance;
-
- const shoulder=-.72;
- const sideX=Math.cos(cameraYaw+Math.PI/2)*shoulder;
- const sideY=Math.sin(cameraYaw+Math.PI/2)*shoulder;
-
- const dx=backX+sideX;
- const dy=backY+sideY;
- const len=Math.hypot(dx,dy);
-
- let safe=0;
-
- if(len>0){
-  const steps=Math.ceil(len/.05);
-  for(let i=1;i<=steps;i++){
-   const t=i/steps;
-   const tx=player.x+dx*t;
-   const ty=player.y+dy*t;
-   if(circleHitsWall(tx,ty,.10))break;
-   safe=t;
-  }
- }
-
- camera.x=player.x+dx*safe;
- camera.y=player.y+dy*safe;
- camera.z=2.2+cameraPitch*1.4;
-}
-function spawnEnemy(){
- for(let i=0;i<80;i++){
-  const x=1.5+Math.random()*(MAP_W-3),y=1.5+Math.random()*(MAP_H-3);
-  if(!circleHitsWall(x,y,.26)&&Math.hypot(x-player.x,y-player.y)>5){
-   enemies.push({
-    x,y,
-    r:.26,
-    height:1.55,
-    hp:1+Math.floor((wave-1)/3),
-    speed:.65+Math.random()*.22+wave*.02,
-    cooldown:0,
-    path:[],
-    pathIndex:0,
-    pathTimer:0,
-    targetCellX:-1,
-    targetCellY:-1
-   });
-   return;
-  }
- }
-}
-function fire(){
- if(player.cooldown>0||gameOver||!mouseLocked)return;
- player.cooldown=.16;
- projectiles.push({
-   x:player.x+Math.cos(cameraYaw)*.35,
-   y:player.y+Math.sin(cameraYaw)*.35,
-   dx:Math.cos(cameraYaw),
-   dy:Math.sin(cameraYaw),
-   speed:14,
-   life:1.5
-  });
- burst(player.x+Math.cos(cameraYaw)*.3,player.y+Math.sin(cameraYaw)*.3,5);
-}
-
-function findPath(startX,startY,goalX,goalY){
- const sx=Math.floor(startX),sy=Math.floor(startY),gx=Math.floor(goalX),gy=Math.floor(goalY);
- if(sx===gx&&sy===gy)return [];
- const key=(x,y)=>x+","+y;
- const q=[[sx,sy]];
- const came=new Map();
- came.set(key(sx,sy),null);
- const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
- let head=0,found=false;
- while(head<q.length){
-  const [x,y]=q[head++];
-  if(x===gx&&y===gy){found=true;break}
-  for(const [dx,dy] of dirs){
-   const nx=x+dx,ny=y+dy,k=key(nx,ny);
-   if(nx<0||nx>=MAP_W||ny<0||ny>=MAP_H)continue;
-   if(MAP[ny][nx]==="#")continue;
-   if(came.has(k))continue;
-   came.set(k,[x,y]);
-   q.push([nx,ny]);
-  }
- }
- if(!found)return [];
- const path=[];
- let cur=[gx,gy];
- while(cur){
-  path.push({x:cur[0]+.5,y:cur[1]+.5});
-  cur=came.get(key(cur[0],cur[1]));
- }
- path.reverse();
- if(path.length&&Math.hypot(path[0].x-startX,path[0].y-startY)<.75)path.shift();
- return path;
-}
-function burst(x,y,n){for(let i=0;i<n;i++)particles.push({x,y,dx:(Math.random()-.5)*3,dy:(Math.random()-.5)*3,life:.2+Math.random()*.35})}
-function lineBlocked(x1,y1,x2,y2){
- const dx=x2-x1,dy=y2-y1,d=Math.hypot(dx,dy),steps=Math.max(2,Math.ceil(d*10));
- for(let i=1;i<steps;i++){const t=i/steps;if(isWall(x1+dx*t,y1+dy*t))return true}return false;
-}
-function updateCameraAndPlayer(dt){
- const fx=Math.cos(cameraYaw),fy=Math.sin(cameraYaw),rx=Math.cos(cameraYaw+Math.PI/2),ry=Math.sin(cameraYaw+Math.PI/2);
- let mx=0,my=0;
- if(keys.w){mx+=fx;my+=fy}if(keys.s){mx-=fx;my-=fy}
- if(keys.d){mx+=rx;my+=ry}if(keys.a){mx-=rx;my-=ry}
- if(mx||my){const l=Math.hypot(mx,my);moveEntity(player,mx/l*player.speed*dt,my/l*player.speed*dt,player.r)}
- updateCamera();
-}
-function update(dt){
- if(gameOver||!mouseLocked)return;
- updateCameraAndPlayer(dt);
- player.cooldown=Math.max(0,player.cooldown-dt);
- if(mouseDown)fire();
- spawnTimer-=dt;
- const target=Math.min(14,3+wave*2);
- if(spawnTimer<=0&&enemies.length<target){spawnEnemy();spawnTimer=Math.max(.3,1-wave*.018)}
- if(enemies.length===0&&score>0&&spawnTimer<.35){wave++;spawnTimer=1.2}
-
- for(let i=projectiles.length-1;i>=0;i--){
-  const p=projectiles[i];p.x+=p.dx*p.speed*dt;p.y+=p.dy*p.speed*dt;p.life-=dt;let remove=isWall(p.x,p.y);
-  for(let j=enemies.length-1;j>=0&&!remove;j--){
-   const e=enemies[j];
-   if(Math.hypot(p.x-e.x,p.y-e.y)<e.r+.12){
-    e.hp--;remove=true;burst(e.x,e.y,8);
-    if(e.hp<=0){score+=10*wave;burst(e.x,e.y,16);enemies.splice(j,1)}
-   }
-  }
-  if(remove||p.life<=0)projectiles.splice(i,1);
- }
- for(const e of enemies){
-  e.cooldown-=dt;
-  e.pathTimer-=dt;
-
-  const dx=player.x-e.x,dy=player.y-e.y,d=Math.hypot(dx,dy)||1;
-  const playerCellX=Math.floor(player.x), playerCellY=Math.floor(player.y);
-
-  if(
-    e.pathTimer<=0 ||
-    e.targetCellX!==playerCellX ||
-    e.targetCellY!==playerCellY ||
-    e.pathIndex>=e.path.length
-  ){
-    e.path=findPath(e.x,e.y,player.x,player.y);
-    e.pathIndex=0;
-    e.pathTimer=.35;
-    e.targetCellX=playerCellX;
-    e.targetCellY=playerCellY;
-  }
-
-  if(d>1){
-    /*
-      Direct pursuit when visible.
-      Otherwise follow the BFS path through the maze.
-      This prevents enemies from getting permanently stuck on walls.
-    */
-    if(!lineBlocked(e.x,e.y,player.x,player.y)){
-      moveEntity(e,dx/d*e.speed*dt,dy/d*e.speed*dt,e.r);
-    }else if(e.pathIndex<e.path.length){
-      const wp=e.path[e.pathIndex];
-      const wx=wp.x-e.x,wy=wp.y-e.y,wd=Math.hypot(wx,wy)||1;
-
-      if(wd<.18){
-        e.pathIndex++;
-      }else{
-        moveEntity(
-          e,
-          wx/wd*e.speed*dt,
-          wy/wd*e.speed*dt,
-          e.r
-        );
+function blocked(x,y,r){
+  const minX=Math.floor(x-r),maxX=Math.floor(x+r);
+  const minY=Math.floor(y-r),maxY=Math.floor(y+r);
+  for(let y0=minY;y0<=maxY;y0++){
+    for(let x0=minX;x0<=maxX;x0++){
+      if(x0<0||y0<0||x0>=MW||y0>=MH||MAP[y0][x0]==="#"){
+        const cx=Math.max(x0,Math.min(x,x0+1));
+        const cy=Math.max(y0,Math.min(y,y0+1));
+        const dx=x-cx,dy=y-cy;
+        if(dx*dx+dy*dy<r*r)return true;
       }
     }
   }
-
-  if(d<1&&e.cooldown<=0){
-    player.hp-=10;
-    e.cooldown=.55;
-    burst(player.x,player.y,7);
+  return false;
+}
+function move(obj,dx,dy,r){
+  const n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/.06));
+  const sx=dx/n,sy=dy/n;
+  for(let i=0;i<n;i++){
+    if(!blocked(obj.x+sx,obj.y,r))obj.x+=sx;
+    if(!blocked(obj.x,obj.y+sy,r))obj.y+=sy;
   }
- }
- for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.dx*dt;p.y+=p.dy*dt;p.life-=dt;if(p.life<=0)particles.splice(i,1)}
- if(player.hp<=0){
-  player.hp=0;gameOver=true;mouseDown=false;
-  if(score>best){best=score;localStorage.setItem("neon_3rd_person_best",best)}
-  titleEl.textContent="SYSTEM DOWN";subtitleEl.textContent="Press R to restart";
-  document.exitPointerLock();
- }
- updateHUD();
+}
+function clearLine(x1,y1,x2,y2){
+  const d=Math.hypot(x2-x1,y2-y1);
+  const n=Math.ceil(d*12);
+  for(let i=1;i<n;i++){
+    const t=i/n;
+    if(wall(x1+(x2-x1)*t,y1+(y2-y1)*t))return false;
+  }
+  return true;
 }
 
-function raycast(angle){
- let mapX=Math.floor(camera.x),mapY=Math.floor(camera.y);
- const dx=Math.cos(angle),dy=Math.sin(angle);
- const ddx=Math.abs(1/(dx||1e-6)),ddy=Math.abs(1/(dy||1e-6));
- let sx,sy,sdx,sdy;
- if(dx<0){sx=-1;sdx=(camera.x-mapX)*ddx}else{sx=1;sdx=(mapX+1-camera.x)*ddx}
- if(dy<0){sy=-1;sdy=(camera.y-mapY)*ddy}else{sy=1;sdy=(mapY+1-camera.y)*ddy}
- let side=0;
- for(let i=0;i<80;i++){
-  if(sdx<sdy){sdx+=ddx;mapX+=sx;side=0}else{sdy+=ddy;mapY+=sy;side=1}
-  if(mapX<0||mapX>=MAP_W||mapY<0||mapY>=MAP_H)break;
-  if(MAP[mapY][mapX]==="#")break;
- }
- let dist=side===0?(mapX-camera.x+(1-sx)/2)/(dx||1e-6):(mapY-camera.y+(1-sy)/2)/(dy||1e-6);
- return {distance:Math.max(.001,Math.abs(dist)),side};
+const player={x:2.5,y:2.5,r:.22,speed:3,hp:100};
+const camera={yaw:0,pitch:0,distance:3.2};
+let enemies=[];
+let bullets=[];
+let particles=[];
+let score=0;
+let wave=1;
+let spawnTimer=0;
+let fireTimer=0;
+let gameOver=false;
+let mouseLocked=false;
+let mouseDown=false;
+const keys=Object.create(null);
+
+function reset(){
+  player.x=2.5;player.y=2.5;player.hp=100;
+  camera.yaw=0;camera.pitch=0;
+  enemies=[];bullets=[];particles=[];
+  score=0;wave=1;spawnTimer=.5;fireTimer=0;gameOver=false;
+  titleEl.textContent="CLICK TO PLAY";
+  subtitleEl.textContent="WASD · Mouse · Left Click";
+  updateHud();
 }
-function drawWorld(){
- const sky=ctx.createLinearGradient(0,0,0,H/2);
- sky.addColorStop(0,"#050b15");
- sky.addColorStop(.55,"#102033");
- sky.addColorStop(1,"#223950");
- ctx.fillStyle=sky;
- ctx.fillRect(0,0,W,H);
 
- const horizon=H/2+cameraPitch*H*.23;
+window.addEventListener("keydown",function(e){
+  keys[e.key.toLowerCase()]=true;
+  if(["w","a","s","d"," "].includes(e.key.toLowerCase()))e.preventDefault();
+  if(e.key.toLowerCase()==="r"&&gameOver)reset();
+});
+window.addEventListener("keyup",function(e){
+  delete keys[e.key.toLowerCase()];
+});
 
- /*
-   Solid floor foundation. The projected tiles add detail on top,
-   but can never leave a blank gap between tiles.
- */
- const solidFloor=ctx.createLinearGradient(0,horizon,0,H);
- solidFloor.addColorStop(0,"#1a2a37");
- solidFloor.addColorStop(1,"#0a1017");
- ctx.fillStyle=solidFloor;
- ctx.fillRect(0,horizon,W,H-horizon);
-
- /* Draw real projected floor tiles over the solid base. */
- for(let my=0;my<MAP_H;my++){
-  for(let mx=0;mx<MAP_W;mx++){
-   if(MAP[my][mx]==="#" ) continue;
-
-   const a=project3DPoint(mx,my,0);
-   const b=project3DPoint(mx+1,my,0);
-   const d=project3DPoint(mx,my+1,0);
-   const e=project3DPoint(mx+1,my+1,0);
-
-   if(!a||!b||!d||!e) continue;
-
-   const near=Math.min(a.forward,b.forward,d.forward,e.forward);
-   if(near<.12) continue;
-
-   const tileShade=(((mx+my)&1)?0.92:1.0);
-   const falloff=Math.max(.22,1-near/22);
-   const rr=Math.floor(20*tileShade*falloff+6);
-   const gg=Math.floor(30*tileShade*falloff+12);
-   const bb=Math.floor(45*tileShade*falloff+18);
-
-   ctx.fillStyle="rgb("+rr+","+gg+","+bb+")";
-   ctx.beginPath();
-   ctx.moveTo(a.sx,a.sy);
-   ctx.lineTo(b.sx,b.sy);
-   ctx.lineTo(e.sx,e.sy);
-   ctx.lineTo(d.sx,d.sy);
-   ctx.closePath();
-   ctx.fill();
-
-   ctx.strokeStyle="rgba(105,190,225,"+(0.045*falloff)+")";
-   ctx.stroke();
+canvas.addEventListener("click",function(){
+  if(!mouseLocked&&!gameOver)canvas.requestPointerLock();
+});
+canvas.addEventListener("mousedown",function(e){
+  if(e.button===0)mouseDown=true;
+});
+window.addEventListener("mouseup",function(e){
+  if(e.button===0)mouseDown=false;
+});
+document.addEventListener("pointerlockchange",function(){
+  mouseLocked=document.pointerLockElement===canvas;
+  if(mouseLocked&&!gameOver){
+    titleEl.textContent="";
+    subtitleEl.textContent="";
+  }else if(!gameOver){
+    titleEl.textContent="PAUSED";
+    subtitleEl.textContent="Click to resume";
   }
- }
-
- /* Wall depth buffer and walls. */
- for(let x=0;x<W;x++){
-  const offset=(x/W-.5)*FOV;
-  const ray=raycast(cameraYaw+offset);
-  const corrected=ray.distance*Math.cos(offset);
-  depthBuffer[x]=corrected;
-
-  const wallHeight=Math.min(H*2.2,H/(corrected*.90));
-  const top=horizon-wallHeight/2;
-
-  let light=Math.max(.14,1-corrected/20);
-  if(ray.side)light*=.68;
-
-  const r=Math.floor(40*light+5);
-  const g=Math.floor(68*light+10);
-  const b=Math.floor(98*light+15);
-
-  ctx.fillStyle="rgb("+r+","+g+","+b+")";
-  ctx.fillRect(x,top,1.4,wallHeight);
-
-  if(corrected<11){
-   ctx.fillStyle="rgba(80,190,235,"+(0.08*(1-corrected/11))+")";
-   ctx.fillRect(x,top+2,1.4,2);
+});
+document.addEventListener("mousemove",function(e){
+  if(!mouseLocked)return;
+  camera.yaw+=e.movementX*.0025;
+  camera.pitch-=e.movementY*.002;
+  camera.pitch=Math.max(-.55,Math.min(.55,camera.pitch));
+});
+window.addEventListener("blur",function(){
+  mouseDown=false;
+  if(document.pointerLockElement===canvas)document.exitPointerLock();
+});
+document.addEventListener("visibilitychange",function(){
+  if(document.hidden){
+    mouseDown=false;
+    if(document.pointerLockElement===canvas)document.exitPointerLock();
   }
- }
+});
 
- /* Floor perspective accents / horizon band. */
- ctx.strokeStyle="rgba(110,200,235,.12)";
- for(let i=1;i<11;i++){
-  const t=i/11;
-  const y=horizon+(H-horizon)*(t*t);
-  ctx.beginPath();
-  ctx.moveTo(0,y);
-  ctx.lineTo(W,y);
-  ctx.stroke();
- }
+function spawnEnemy(){
+  for(let i=0;i<100;i++){
+    const x=1.5+Math.random()*(MW-3);
+    const y=1.5+Math.random()*(MH-3);
+    if(!blocked(x,y,.27)&&Math.hypot(x-player.x,y-player.y)>5){
+      enemies.push({x:x,y:y,r:.27,hp:1+Math.floor((wave-1)/3),speed:.7+Math.random()*.25});
+      return;
+    }
+  }
 }
+
+function shoot(){
+  if(fireTimer>0||gameOver||!mouseLocked)return;
+  fireTimer=.15;
+  const dx=Math.cos(camera.yaw),dy=Math.sin(camera.yaw);
+  bullets.push({x:player.x+dx*.45,y:player.y+dy*.45,dx:dx,dy:dy,life:1.2});
+  particles.push({x:player.x+dx*.45,y:player.y+dy*.45,life:.12});
+}
+
+function updatePlayer(dt){
+  const fx=Math.cos(camera.yaw),fy=Math.sin(camera.yaw);
+  const rx=Math.cos(camera.yaw+Math.PI/2),ry=Math.sin(camera.yaw+Math.PI/2);
+  let x=0,y=0;
+  if(keys.w){x+=fx;y+=fy}
+  if(keys.s){x-=fx;y-=fy}
+  if(keys.d){x+=rx;y+=ry}
+  if(keys.a){x-=rx;y-=ry}
+  if(x||y){
+    const l=Math.hypot(x,y);
+    move(player,x/l*player.speed*dt,y/l*player.speed*dt,player.r);
+  }
+}
+
+function updateBullets(dt){
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];
+    const oldX=b.x,oldY=b.y;
+    b.x+=b.dx*14*dt;
+    b.y+=b.dy*14*dt;
+    b.life-=dt;
+    let remove=b.life<=0||wall(b.x,b.y);
+    if(!remove){
+      for(let j=enemies.length-1;j>=0;j--){
+        const e=enemies[j];
+        if(Math.hypot(b.x-e.x,b.y-e.y)<e.r+.13){
+          e.hp--;
+          remove=true;
+          if(e.hp<=0){
+            score+=10*wave;
+            enemies.splice(j,1);
+          }
+          break;
+        }
+      }
+    }
+    if(remove)bullets.splice(i,1);
+    if(!remove){
+      particles.push({x:(oldX+b.x)/2,y:(oldY+b.y)/2,life:.04});
+    }
+  }
+}
+
+function updateEnemies(dt){
+  for(const e of enemies){
+    const dx=player.x-e.x,dy=player.y-e.y;
+    const d=Math.hypot(dx,dy)||1;
+    if(d>1){
+      if(clearLine(e.x,e.y,player.x,player.y)){
+        move(e,dx/d*e.speed*dt,dy/d*e.speed*dt,e.r);
+      }else{
+        // Simple wall-follow fallback: try four directions and choose one
+        // that gets closer without requiring a fragile pathfinding system.
+        const dirs=[
+          [dx/d,dy/d],
+          [-dy/d,dx/d],
+          [dy/d,-dx/d],
+          [-dx/d,-dy/d]
+        ];
+        let best=null,bestD=d;
+        for(const v of dirs){
+          const nx=e.x+v[0]*e.speed*dt;
+          const ny=e.y+v[1]*e.speed*dt;
+          if(!blocked(nx,ny,e.r)){
+            const nd=Math.hypot(player.x-nx,player.y-ny);
+            if(nd<bestD){bestD=nd;best=v}
+          }
+        }
+        if(best)move(e,best[0]*e.speed*dt,best[1]*e.speed*dt,e.r);
+      }
+    }else{
+      player.hp=Math.max(0,player.hp-18*dt);
+    }
+  }
+}
+
+function update(dt){
+  if(gameOver||!mouseLocked)return;
+
+  updatePlayer(dt);
+  fireTimer=Math.max(0,fireTimer-dt);
+  if(mouseDown)shoot();
+  updateBullets(dt);
+  updateEnemies(dt);
+
+  spawnTimer-=dt;
+  const target=Math.min(12,3+wave*2);
+  if(spawnTimer<=0&&enemies.length<target){
+    spawnEnemy();
+    spawnTimer=.8;
+  }
+  if(enemies.length===0&&spawnTimer<0&&score>0){
+    wave++;
+    spawnTimer=1.5;
+  }
+
+  for(let i=particles.length-1;i>=0;i--){
+    particles[i].life-=dt;
+    if(particles[i].life<=0)particles.splice(i,1);
+  }
+
+  if(player.hp<=0){
+    gameOver=true;
+    mouseDown=false;
+    titleEl.textContent="SYSTEM DOWN";
+    subtitleEl.textContent="Press R to restart";
+    if(document.pointerLockElement===canvas)document.exitPointerLock();
+  }
+  updateHud();
+}
+
 const FOV=Math.PI/3;
-function project3DPoint(x,y,z){
- const dx=x-camera.x;
- const dy=y-camera.y;
- const forward=Math.cos(cameraYaw)*dx+Math.sin(cameraYaw)*dy;
- const side=-Math.sin(cameraYaw)*dx+Math.cos(cameraYaw)*dy;
- if(forward<=.06)return null;
- const focal=(W/2)/Math.tan(FOV/2);
- const sx=W/2+(side/forward)*focal;
- const horizon=H/2+cameraPitch*H*.23;
- const sy=horizon-(z-camera.z)*focal/forward;
- return {forward,sx,sy};
-}
-function project(x,y,z,height){
- const base=project3DPoint(x,y,z);
- const top=project3DPoint(x,y,z+height);
- if(!base||!top)return null;
- const h=base.sy-top.sy;
- return {forward:base.forward,sx:base.sx,top:top.sy,bottom:base.sy,w:h*.55,h:h};
-}
-function rgb(c,shade){
- return "rgb("+
-   Math.max(0,Math.min(255,Math.floor(c[0]*shade)))+","+
-   Math.max(0,Math.min(255,Math.floor(c[1]*shade)))+","+
-   Math.max(0,Math.min(255,Math.floor(c[2]*shade)))+")";
-}
-function transformModelPoint(cx,cy,cz,lx,ly,lz,rot){
- const cr=Math.cos(rot),sr=Math.sin(rot);
- return {
-   x:cx+lx*cr-ly*sr,
-   y:cy+lx*sr+ly*cr,
-   z:cz+lz
- };
-}
-function drawCuboid(cx,cy,cz,w,d,h,rot,color,shade=1){
- const x=w/2,y=d/2;
- const local=[
-  [-x,-y,0],[x,-y,0],[x,y,0],[-x,y,0],
-  [-x,-y,h],[x,-y,h],[x,y,h],[-x,y,h]
- ];
- const verts=local.map(v=>{
-  const p=transformModelPoint(cx,cy,cz,v[0],v[1],v[2],rot);
-  return project3DPoint(p.x,p.y,p.z);
- });
- if(verts.some(v=>!v))return;
 
- const faces=[
-  {idx:[0,1,5,4],s:.82},
-  {idx:[1,2,6,5],s:1.02},
-  {idx:[2,3,7,6],s:.70},
-  {idx:[3,0,4,7],s:.88},
-  {idx:[4,5,6,7],s:1.12},
-  {idx:[0,3,2,1],s:.58}
- ];
-
- const draws=faces.map(f=>{
-  const pts=f.idx.map(i=>verts[i]);
-  return {pts,depth:f.idx.reduce((sum,i)=>sum+verts[i].forward,0)/4,shade:f.s*shade};
- }).sort((a,b)=>b.depth-a.depth);
-
- for(const face of draws){
-  const centerX=face.pts.reduce((s,p)=>s+p.sx,0)/face.pts.length;
-  const xi=Math.max(0,Math.min(W-1,Math.floor(centerX)));
-  if(face.depth>depthBuffer[xi]*1.01)continue;
-
-  ctx.fillStyle=rgb(color,face.shade);
-  ctx.beginPath();
-  ctx.moveTo(face.pts[0].sx,face.pts[0].sy);
-  for(let i=1;i<face.pts.length;i++)ctx.lineTo(face.pts[i].sx,face.pts[i].sy);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.strokeStyle="rgba(190,240,255,.06)";
-  ctx.stroke();
- }
-}
-function drawLowPolyCylinder(cx,cy,cz,r,h,rot,color,sides=8){
- const pts=[];
- for(let i=0;i<sides;i++){
-  const a=rot+(i/sides)*Math.PI*2;
-  pts.push(project3DPoint(cx+Math.cos(a)*r,cy+Math.sin(a)*r,cz));
- }
- const topPts=[];
- for(let i=0;i<sides;i++){
-  const a=rot+(i/sides)*Math.PI*2;
-  topPts.push(project3DPoint(cx+Math.cos(a)*r,cy+Math.sin(a)*r,cz+h));
- }
- if(pts.some(v=>!v)||topPts.some(v=>!v))return;
-
- const faces=[];
- for(let i=0;i<sides;i++){
-  const j=(i+1)%sides;
-  faces.push({
-   pts:[pts[i],pts[j],topPts[j],topPts[i]],
-   depth:(pts[i].forward+pts[j].forward+topPts[i].forward+topPts[j].forward)/4,
-   shade:.72+.42*(i/sides)
-  });
- }
- faces.push({pts:topPts,depth:topPts.reduce((s,p)=>s+p.forward,0)/sides,shade:1.13});
- faces.sort((a,b)=>b.depth-a.depth);
-
- for(const face of faces){
-  const centerX=face.pts.reduce((s,p)=>s+p.sx,0)/face.pts.length;
-  const xi=Math.max(0,Math.min(W-1,Math.floor(centerX)));
-  if(face.depth>depthBuffer[xi]*1.01)continue;
-  ctx.fillStyle=rgb(color,face.shade);
-  ctx.beginPath();
-  ctx.moveTo(face.pts[0].sx,face.pts[0].sy);
-  for(let i=1;i<face.pts.length;i++)ctx.lineTo(face.pts[i].sx,face.pts[i].sy);
-  ctx.closePath();ctx.fill();
- }
+function project(x,y,z){
+  const dx=x-player.x;
+  const dy=y-player.y;
+  const forward=Math.cos(camera.yaw)*dx+Math.sin(camera.yaw)*dy;
+  const side=-Math.sin(camera.yaw)*dx+Math.cos(camera.yaw)*dy;
+  if(forward<=.08)return null;
+  const focal=(W/2)/Math.tan(FOV/2);
+  const sx=W/2+(side/forward)*focal;
+  const horizon=H/2+camera.pitch*H*.2;
+  const cameraZ=2.0;
+  const sy=horizon-(z-cameraZ)*focal/forward;
+  return {forward,side,sx,sy,focal};
 }
 
-function visibleEnough(p){
- if(!p)return false;
- const left=Math.floor(p.sx-p.w/2),right=Math.ceil(p.sx+p.w/2);
- for(let x=Math.max(0,left);x<=Math.min(W-1,right);x++){
-  if(p.forward<depthBuffer[x]*1.02)return true;
- }
- return false;
+function drawBackground(){
+  const sky=ctx.createLinearGradient(0,0,0,H*.55);
+  sky.addColorStop(0,"#050a13");
+  sky.addColorStop(1,"#183048");
+  ctx.fillStyle=sky;
+  ctx.fillRect(0,0,W,H);
+
+  const horizon=H/2+camera.pitch*H*.2;
+  const floor=ctx.createLinearGradient(0,horizon,0,H);
+  floor.addColorStop(0,"#233a4b");
+  floor.addColorStop(1,"#0a1119");
+  ctx.fillStyle=floor;
+  ctx.fillRect(0,horizon,W,H-horizon);
+
+  ctx.strokeStyle="rgba(120,210,240,.13)";
+  for(let i=1;i<12;i++){
+    const t=i/12;
+    const y=horizon+(H-horizon)*t*t;
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+  }
 }
-function drawEnemy(e,p){
- if(!e||!p)return;
 
- /* Ground contact shadow keeps the feet visually attached to the floor. */
- const foot=project3DPoint(e.x,e.y,.01);
- if(foot){
-  const size=Math.max(5,26/Math.max(.4,foot.forward));
-  ctx.fillStyle="rgba(0,0,0,.30)";
-  ctx.beginPath();
-  ctx.ellipse(foot.sx,foot.sy+2,size,size*.38,0,0,Math.PI*2);
-  ctx.fill();
- }
+function drawWalls(){
+  const horizon=H/2+camera.pitch*H*.2;
+  for(let x=0;x<W;x+=2){
+    const angle=camera.yaw+(x/W-.5)*FOV;
+    const dx=Math.cos(angle),dy=Math.sin(angle);
+    let dist=0;
+    for(let s=0;s<40;s++){
+      dist+=.12;
+      if(wall(player.x+dx*dist,player.y+dy*dist))break;
+    }
+    const corrected=Math.max(.12,dist*Math.cos((x/W-.5)*FOV));
+    const height=Math.min(H*1.8,H/(corrected*.72));
+    const top=horizon-height/2;
+    const light=Math.max(.15,1-corrected/18);
+    ctx.fillStyle="rgb("+Math.floor(24+34*light)+","+Math.floor(42+52*light)+","+Math.floor(60+68*light)+")";
+    ctx.fillRect(x,top,2.2,height);
+  }
+}
 
- const rot=Math.atan2(player.y-e.y,player.x-e.x);
- const bob=Math.sin(performance.now()/180+e.phase)*.025;
+function drawBoxWorld(x,y,z,w,d,h,rot,color){
+  const points=[];
+  for(const p of [[-w/2,-d/2,0],[w/2,-d/2,0],[w/2,d/2,0],[-w/2,d/2,0],[-w/2,-d/2,h],[w/2,-d/2,h],[w/2,d/2,h],[-w/2,d/2,h]]){
+    const c=Math.cos(rot),s=Math.sin(rot);
+    const px=x+p[0]*c-p[1]*s;
+    const py=y+p[0]*s+p[1]*c;
+    points.push(project(px,py,z+p[2]));
+  }
+  if(points.some(p=>!p))return;
+  const faces=[[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7],[4,5,6,7]];
+  const shades=[.75,1,.6,.85,1.1];
+  const order=faces.map((f,i)=>({f,i,d:f.reduce((a,n)=>a+points[n].forward,0)/4})).sort((a,b)=>b.d-a.d);
+  for(const o of order){
+    const pts=o.f.map(n=>points[n]);
+    ctx.fillStyle="rgb("+Math.floor(color[0]*shades[o.i])+","+Math.floor(color[1]*shades[o.i])+","+Math.floor(color[2]*shades[o.i])+")";
+    ctx.beginPath();
+    ctx.moveTo(pts[0].sx,pts[0].sy);
+    for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].sx,pts[i].sy);
+    ctx.closePath();ctx.fill();
+  }
+}
 
- /* Simple low-poly enemy: legs, torso, shoulders, arms, head. */
- drawCuboid(e.x-.11*Math.sin(rot),e.y+.11*Math.cos(rot),.05,.16,.16,.68,rot,[72,18,40]);
- drawCuboid(e.x+.11*Math.sin(rot),e.y-.11*Math.cos(rot),.05,.16,.16,.68,rot,[72,18,40]);
+function drawEnemy(e){
+  const p=project(e.x,e.y,0);
+  if(!p)return;
+  const rot=Math.atan2(player.y-e.y,player.x-e.x);
+  const size=Math.max(5,25/p.forward);
+  ctx.fillStyle="rgba(0,0,0,.35)";
+  ctx.beginPath();ctx.ellipse(p.sx,p.sy+2,size,size*.35,0,0,Math.PI*2);ctx.fill();
 
- drawCuboid(e.x,e.y,.67,.62,.38,.70,rot,[235,48,92]);
- drawCuboid(e.x,e.y,1.34,.28,.28,.34,rot,[255,83,125]);
-
- drawCuboid(e.x-.39*Math.sin(rot),e.y+.39*Math.cos(rot),.69,.17,.17,.58,rot+.10,[180,35,74]);
- drawCuboid(e.x+.39*Math.sin(rot),e.y-.39*Math.cos(rot),.69,.17,.17,.58,rot-.10,[180,35,74]);
-
- drawCuboid(e.x-.32*Math.sin(rot),e.y+.32*Math.cos(rot),1.03,.22,.30,.20,rot,[255,72,112]);
- drawCuboid(e.x+.32*Math.sin(rot),e.y-.32*Math.cos(rot),1.03,.22,.30,.20,rot,[255,72,112]);
-
- const eye=project3DPoint(
-   e.x+Math.cos(rot)*.24,
-   e.y+Math.sin(rot)*.24,
-   1.48+bob
- );
- if(eye){
-   ctx.fillStyle="#eaffff";
-   ctx.fillRect(eye.sx-5,eye.sy-2,10,4);
- }
+  drawBoxWorld(e.x,e.y,.05,.5,.38,.7,rot,[225,45,85]);
+  drawBoxWorld(e.x,e.y,.75,.32,.32,.36,rot,[255,85,125]);
+  drawBoxWorld(e.x-.22*Math.sin(rot),e.y+.22*Math.cos(rot),.65,.16,.16,.5,rot,[175,35,70]);
+  drawBoxWorld(e.x+.22*Math.sin(rot),e.y-.22*Math.cos(rot),.65,.16,.16,.5,rot,[175,35,70]);
 }
 
 function drawPlayer(){
- /*
-   Deliberately draw the player model without the old whole-sprite
-   visibility gate. The player is the camera's controlled character,
-   so walls should not be allowed to make the entire model disappear.
- */
- const rot=cameraYaw;
- const base=project3DPoint(player.x,player.y,0);
- if(!base)return;
+  const rot=camera.yaw;
+  const p=project(player.x,player.y,0);
+  if(!p)return;
+  const size=Math.max(7,35/p.forward);
+  ctx.fillStyle="rgba(0,0,0,.38)";
+  ctx.beginPath();ctx.ellipse(p.sx,p.sy+3,size*1.2,size*.4,0,0,Math.PI*2);ctx.fill();
 
- const bodyDepth=base.forward;
- const focal=(W/2)/Math.tan(FOV/2);
- const modelScale=Math.max(0.18,Math.min(1.4,1/bodyDepth*focal*.012));
+  drawBoxWorld(player.x,player.y,.05,.55,.4,.72,rot,[45,160,190]);
+  drawBoxWorld(player.x,player.y,.77,.7,.44,.72,rot,[55,190,215]);
+  drawBoxWorld(player.x,player.y,1.48,.38,.38,.38,rot,[105,225,240]);
+  drawBoxWorld(player.x-.4*Math.sin(rot),player.y+.4*Math.cos(rot),.82,.18,.18,.6,rot-.1,[35,125,155]);
+  drawBoxWorld(player.x+.4*Math.sin(rot),player.y-.4*Math.cos(rot),.82,.18,.18,.6,rot+.1,[35,125,155]);
 
- /* Shadow */
- ctx.save();
- ctx.fillStyle="rgba(0,0,0,.32)";
- ctx.beginPath();
- const shadowSize=Math.max(8,42/bodyDepth);
- ctx.ellipse(base.sx,base.sy+4,shadowSize*1.25,shadowSize*.48,0,0,Math.PI*2);
- ctx.fill();
- ctx.restore();
+  // Right-hand weapon.
+  const gx=player.x+Math.cos(rot)*.45-Math.sin(rot)*.42;
+  const gy=player.y+Math.sin(rot)*.45+Math.cos(rot)*.42;
+  drawBoxWorld(gx,gy,.95,.16,.16,.72,rot,[25,40,58]);
 
- /*
-   Main low-poly body. drawCuboid creates actual 3D box faces
-   in world space and projects them into the third-person view.
- */
- const sway=Math.sin(performance.now()/160)*.022;
-
- drawCuboid(
-   player.x-.12*Math.sin(rot),
-   player.y+.12*Math.cos(rot),
-   .05,
-   .20,.20,.76,
-   rot,
-   [28,83,103]
- );
-
- drawCuboid(
-   player.x+.12*Math.sin(rot),
-   player.y-.12*Math.cos(rot),
-   .05,
-   .20,.20,.76,
-   rot,
-   [35,105,128]
- );
-
- /* Torso */
- drawCuboid(
-   player.x,
-   player.y,
-   .79,
-   .70,.44,.78,
-   rot,
-   [48,180,213]
- );
-
- /* Chest plate */
- drawCuboid(
-   player.x+Math.cos(rot)*.035,
-   player.y+Math.sin(rot)*.035,
-   1.05,
-   .54,.30,.34,
-   rot,
-   [95,229,246]
- );
-
- /* Shoulder pads */
- drawCuboid(
-   player.x-.42*Math.sin(rot),
-   player.y+.42*Math.cos(rot),
-   1.08,
-   .22,.32,.23,
-   rot,
-   [77,208,229]
- );
-
- drawCuboid(
-   player.x+.42*Math.sin(rot),
-   player.y-.42*Math.cos(rot),
-   1.08,
-   .22,.32,.23,
-   rot,
-   [77,208,229]
- );
-
- /* Arms */
- drawCuboid(
-   player.x-.43*Math.sin(rot),
-   player.y+.43*Math.cos(rot),
-   .66,
-   .18,.18,.63,
-   rot-.10+sway,
-   [32,128,158]
- );
-
- drawCuboid(
-   player.x+.43*Math.sin(rot),
-   player.y-.43*Math.cos(rot),
-   .66,
-   .18,.18,.63,
-   rot+.10-sway,
-   [32,128,158]
- );
-
- /* Head / helmet */
- drawLowPolyCylinder(
-   player.x,
-   player.y,
-   1.56,
-   .27,
-   .32,
-   rot,
-   [103,228,242],
-   8
- );
-
- /* Back unit */
- drawCuboid(
-   player.x-Math.cos(rot)*.25,
-   player.y-Math.sin(rot)*.25,
-   .92,
-   .38,.20,.50,
-   rot,
-   [24,52,70]
- );
-
- /*
-   Weapon: clearly attached to the right hand and pointed in
-   the same direction as the camera. This makes the center
-   crosshair the aiming reference, Warframe-like.
- */
- const gunX=
-   player.x+
-   Math.cos(rot)*.42-
-   Math.sin(rot)*.43;
-
- const gunY=
-   player.y+
-   Math.sin(rot)*.42+
-   Math.cos(rot)*.43;
-
- const gunZ=1.00;
-
- drawCuboid(
-   gunX,
-   gunY,
-   gunZ,
-   .14,.14,.72,
-   rot,
-   [30,45,63]
- );
-
- /* Energy emitter on the weapon */
- const muzzleX=
-   gunX+
-   Math.cos(rot)*.42;
-
- const muzzleY=
-   gunY+
-   Math.sin(rot)*.42;
-
- const muzzle=project3DPoint(
-   muzzleX,
-   muzzleY,
-   gunZ+.06
- );
-
- if(muzzle){
-   const r=Math.max(2,5/muzzle.forward);
-   ctx.fillStyle="#8df8ff";
-   ctx.beginPath();
-   ctx.arc(muzzle.sx,muzzle.sy,r,0,Math.PI*2);
-   ctx.fill();
- }
+  const muzzle=project(gx+Math.cos(rot)*.4,gy+Math.sin(rot)*.4,1.0);
+  if(muzzle){
+    ctx.fillStyle="#9dfaff";
+    ctx.beginPath();ctx.arc(muzzle.sx,muzzle.sy,Math.max(2,5/muzzle.forward),0,Math.PI*2);ctx.fill();
+  }
 }
 
-function drawObjects(){
- /*
-   Far-to-near for enemies/projectiles first.
-   Player is deliberately drawn last so it remains visible
-   as the controlled third-person character.
- */
- const arr=[];
-
- for(const e of enemies){
-   const p=project(e.x,e.y,0,e.height);
-   if(p)arr.push({type:"enemy",p,entity:e});
- }
-
- for(const s of projectiles){
-   const p=project(s.x,s.y,1,.15);
-   if(p)arr.push({type:"shot",p,entity:s});
- }
-
- arr.sort((a,b)=>b.p.forward-a.p.forward);
-
- for(const o of arr){
-   if(o.type==="enemy")drawEnemy(o.entity,o.p);
-   else drawShot(o.p);
- }
-
- drawPlayer();
+function drawBullets(){
+  for(const b of bullets){
+    const p=project(b.x,b.y,1.05);
+    if(!p)continue;
+    const r=Math.max(2,7/p.forward);
+    ctx.fillStyle="#a9ffff";
+    ctx.beginPath();ctx.arc(p.sx,p.sy,r,0,Math.PI*2);ctx.fill();
+  }
 }
 
-function drawShot(p){
- if(!p)return;
- const size=Math.max(2,9/p.forward);
- ctx.fillStyle="#a9ffff";
- ctx.beginPath();
- ctx.arc(p.sx,p.top+Math.max(1,p.h*.5),size,0,Math.PI*2);
- ctx.fill();
-}\nfunction drawWeapon(){
- const x=W*.79,y=H*.82;
- ctx.fillStyle="#182b40";ctx.fillRect(x,y,W*.12,H*.18);
- ctx.fillStyle="#71edff";ctx.fillRect(x+W*.045,y-H*.06,W*.03,H*.12);
- if(mouseDown){ctx.fillStyle="rgba(150,255,255,.8)";ctx.beginPath();ctx.arc(x+W*.06,y-H*.075,11+Math.random()*7,0,Math.PI*2);ctx.fill()}
+function render(){
+  drawBackground();
+  drawWalls();
+  for(const e of enemies)drawEnemy(e);
+  drawBullets();
+  drawPlayer();
 }
-function render(){drawWorld();drawObjects();drawWeapon()}
-function updateHUD(){scoreEl.textContent=score;waveEl.textContent=wave;enemyCountEl.textContent=enemies.length;bestEl.textContent=best;hpEl.style.width=player.hp+"%"}
+
+function updateHud(){
+  scoreEl.textContent=score;
+  waveEl.textContent=wave;
+  hpEl.textContent=Math.ceil(player.hp);
+  enemiesEl.textContent=enemies.length;
+}
+
 let last=performance.now();
-function loop(now){const dt=Math.min(.045,(now-last)/1000);last=now;update(dt);render();requestAnimationFrame(loop)}
-reset();requestAnimationFrame(loop);
+function loop(now){
+  const dt=Math.min(.04,(now-last)/1000);
+  last=now;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+reset();
+requestAnimationFrame(loop);
 })();
 </script>
 </body>
